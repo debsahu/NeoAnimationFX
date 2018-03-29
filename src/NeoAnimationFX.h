@@ -97,6 +97,7 @@ typedef  NeoPixelBrightnessBus<NeoGrbFeature, NeoEsp8266Dma800KbpsMethod>       
 typedef  NeoPixelBrightnessBus<NeoGrbFeature, NeoEsp8266Dma400KbpsMethod>       NeoPBBGRBD400;
 typedef  NeoPixelBrightnessBus<NeoGrbFeature, NeoEsp8266BitBang800KbpsMethod>   NeoPBBGRBBB800;
 typedef  NeoPixelBrightnessBus<NeoGrbFeature, NeoEsp8266BitBang400KbpsMethod>   NeoPBBGRBBB400;
+typedef  NeoPixelBrightnessBus<NeoGrbFeature, NeoWs2813Method>                  NeoPBBGRBws2813;
 
 typedef  NeoPixelBrightnessBus<NeoRgbFeature, Neo800KbpsMethod>                 NeoPBBRGB800;
 typedef  NeoPixelBrightnessBus<NeoRgbFeature, Neo400KbpsMethod>                 NeoPBBRGB400;
@@ -106,6 +107,7 @@ typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoEsp8266Dma800KbpsMethod>       
 typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoEsp8266Dma400KbpsMethod>       NeoPBBRGBD400;
 typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoEsp8266BitBang800KbpsMethod>   NeoPBBRGBBB800;
 typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoEsp8266BitBang400KbpsMethod>   NeoPBBRGBBB400;
+typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoWs2813Method>                  NeoPBBRGBws2813;
 
 //typedef  NeoPixelBrightnessBus <NeoRgbwFeature, Neo800KbpsMethod>               NeoPBBRGBW800; // Not supported yet
 
