@@ -14,6 +14,15 @@
 #define BRIGHTNESS_MIN 0
 #define BRIGHTNESS_MAX 255
 
+/* each segment uses 34 bytes of SRAM memory, so if you're application fails because of
+  insufficient memory, decreasing MAX_NUM_SEGMENTS may help */
+#define MAX_NUM_SEGMENTS 10
+#define NUM_COLORS 3     /* number of colors per segment */
+#define SEGMENT          _segments[_segment_index]
+#define SEGMENT_RUNTIME  _segment_runtimes[_segment_index]
+#define SEGMENT_LENGTH   (SEGMENT.stop - SEGMENT.start + 1)
+#define RESET_RUNTIME    memset(_segment_runtimes, 0, sizeof(_segment_runtimes))
+
 // some common colors
 #define RED        0xFF0000
 #define GREEN      0x00FF00
@@ -27,7 +36,7 @@
 #define ORANGE     0xFF3000
 #define ULTRAWHITE 0xFFFFFFFF
 
-#define MODE_COUNT 57
+#define MODE_COUNT 58
 
 #define FX_MODE_STATIC                   0
 #define FX_MODE_BLINK                    1
@@ -87,7 +96,7 @@
 #define FX_MODE_ICU                     55
 #define FX_MODE_CUSTOM                  56
 
-#define MAX_PIXEL_CT 400
+#define MAX_PIXEL_CT 3000
 
 typedef  NeoPixelBrightnessBus<NeoGrbFeature, Neo800KbpsMethod>                 NeoPBBGRB800;   // Use this for WS2812
 typedef  NeoPixelBrightnessBus<NeoGrbFeature, Neo400KbpsMethod>                 NeoPBBGRB400;
@@ -113,8 +122,48 @@ typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoWs2813Method>                  
 
 template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   typedef uint16_t (NeoAnimationFX::*mode_ptr)(void);
+  
   public:
 
+  // segment parameters
+  
+  /* set default values c way
+  struct segment_struct {
+    uint8_t  mode;
+    RgbColor color;
+    uint16_t speed;
+    uint16_t start;
+    uint16_t stop;
+    bool     reverse;
+  } segment_default = { FX_MODE_STATIC, (RgbColor) HtmlColor(DEFAULT_COLOR), DEFAULT_SPEED, 0, 7, false};
+  
+  typedef struct segment_struct segment; */
+
+  typedef struct segment {
+    uint8_t  mode;
+    RgbColor colors[NUM_COLORS];
+    uint16_t speed;
+    uint16_t start;
+    uint16_t stop;
+    bool     reverse;
+	// set default values c++ way
+	segment(): 
+	  mode(FX_MODE_STATIC), 
+	  colors({(RgbColor) HtmlColor(DEFAULT_COLOR), (RgbColor) HtmlColor(DEFAULT_COLOR), (RgbColor) HtmlColor(DEFAULT_COLOR)}), 
+	  speed(DEFAULT_SPEED), 
+	  start(0), 
+	  stop(7), 
+	  reverse(false) {}
+  } segment;
+    
+  // segment runtime parameters
+  typedef struct segment_runtime {
+    uint32_t counter_mode_step;
+    uint32_t counter_mode_call;
+    unsigned long next_time;
+    uint16_t aux_param;
+  } segment_runtime;
+	
   NeoAnimationFX(T_PIXEL_METHOD& pixelStrip) :
     _strip(pixelStrip) {
       _mode[FX_MODE_STATIC]                  = &NeoAnimationFX::mode_static;
@@ -252,6 +301,15 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
 	  next_time = 0;
 	  aux_param = 0;
 	  (_strip.PixelCount() > MAX_PIXEL_CT) ? _maxled = MAX_PIXEL_CT - 1 : _maxled = _strip.PixelCount() - 1 ;
+	  
+	  _num_segments = 1;
+      _segments[0].mode = DEFAULT_MODE;
+	  //RgbColor default_color(HtmlColor(DEFAULT_COLOR));
+      _segments[0].colors[0] = (RgbColor) HtmlColor(DEFAULT_COLOR);
+      _segments[0].start = 0;
+	  (_strip.PixelCount() > MAX_PIXEL_CT) ? _segments[0].stop = MAX_PIXEL_CT - 1 : _segments[0].stop = _strip.PixelCount() - 1 ;
+      _segments[0].speed = DEFAULT_SPEED;
+      RESET_RUNTIME;
     }
   
   void init() {
@@ -342,6 +400,11 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     _color = HEXSTR;
   }
   
+  void setPixelColor(uint16_t pixel, uint8_t r, uint8_t g, uint8_t b) {
+    RgbColor color_tmp(r, g, b);
+	_strip.SetPixelColor(pixel, color_tmp);
+  }
+  
   void setColor(uint32_t c) {
     _color = c;
   }
@@ -368,6 +431,10 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   
   uint32_t getColor(void) {
     return _color;
+  }
+  
+  uint16_t numPixels(void){
+    return _maxled;
   }
 
   boolean isRunning() {
@@ -469,9 +536,10 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   
   void strip_off() {
     RgbColor dark_off(HtmlColor(BLACK));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, dark_off);
-    }
+	_strip.ClearTo(dark_off);
+    // for(uint16_t i=0; i <= _maxled; i++) {
+      // _strip.SetPixelColor(i, dark_off);
+    // }
     _strip.Show();
   }
 
@@ -481,10 +549,9 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * No blinking. Just plain old static light.
   */
   uint16_t mode_static(void) {
-	  RgbColor color_tmp(HtmlColor( (uint32_t) _color ));
-	  for(uint16_t i=0; i <= _maxled; i++) {
-         _strip.SetPixelColor(i, color_tmp);
-      }
+	for(uint16_t i=0; i <= _maxled; i++) {
+      _strip.SetPixelColor(i, (RgbColor) HtmlColor((uint32_t) _color));
+    }
   }
   
   /*
@@ -495,10 +562,9 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t blink(uint32_t color1, uint32_t color2, bool strobe) {
     uint32_t color = ((counter_mode_call & 1) == 0) ? color1 : color2;
     if(_reverse) color = (color == color1) ? color2 : color1;
-    //byte w = (color >> 24) & 0xFF, r = (color >> 16) & 0xFF, g = (color >>  8) & 0xFF, b = (color & 0xFF);
-    RgbColor color_tmp(HtmlColor((uint32_t) color));
+	
     for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp);
+      _strip.SetPixelColor(i, (RgbColor) HtmlColor((uint32_t) color));
     }
 
     if((counter_mode_call & 1) == 0) {
@@ -867,12 +933,18 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * fades out the current segment by dividing each pixel's intensity by 2
   */
   void fade_out() {
-    for(uint16_t i=0; i <= _maxled; i++) {
+    /* for(uint16_t i=0; i <= _maxled; i++) {
       RgbColor rgbcolortmp = _strip.GetPixelColor(i);
       byte R = (byte)rgbcolortmp.R; byte G = (byte)rgbcolortmp.G; byte B = (byte)rgbcolortmp.B;
 	  unsigned long rgbcolorhextmp = ((long)R << 16L) | ((long)G << 8L) | (long)B;
       uint32_t color = (rgbcolorhextmp >> 1) & 0x7F7F7F;
 	  RgbColor color_tmp(HtmlColor((uint32_t) color));
+      _strip.SetPixelColor(i, color_tmp);
+    } */
+	
+	for(uint16_t i=0; i <= _maxled; i++) {
+      RgbColor rgbcolortmp = _strip.GetPixelColor(i);
+	  RgbColor color_tmp((uint8_t)(rgbcolortmp.R/2), (uint8_t)(rgbcolortmp.G/2), (uint8_t)(rgbcolortmp.B/2) );
       _strip.SetPixelColor(i, color_tmp);
     }
   }
@@ -1501,6 +1573,69 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     }
   }
   
+  /*
+  * Fades all pixel to Black (percentage rgb)
+  */
+  void fadeToBlack(uint16_t ledNo, byte fadeValue) {
+    RgbColor oldColor = _strip.GetPixelColor(ledNo);
+    uint8_t r = (oldColor.R <= 10)? 0 : (uint8_t) oldColor.R - (oldColor.R * fadeValue / 256);
+    uint8_t g = (oldColor.G <= 10)? 0 : (uint8_t) oldColor.G - (oldColor.G * fadeValue / 256);
+    uint8_t b = (oldColor.B <= 10)? 0 : (uint8_t) oldColor.B - (oldColor.B * fadeValue / 256);
+	RgbColor newColor(r, g, b);    
+    _strip.SetPixelColor(ledNo, newColor);
+  }
+
+  /*
+  * Fades all pixel to Black (use absolute value)
+  */
+  void fadeToBlackVal(uint16_t ledNo, uint8_t fadeValue) {
+    RgbColor color_tmp = _strip.GetPixelColor(ledNo);
+	if(fadeValue < 10) fadeValue = 0; 
+	color_tmp.Darken(fadeValue);
+    _strip.SetPixelColor(ledNo, color_tmp);
+  }
+  
+  /*
+  * Meteor Rain
+  * https://www.tweaking4all.com/hardware/arduino/adruino-led-strip-effects/#LEDStripEffectMeteorRain
+  */
+  
+  uint16_t meteorRain(uint8_t meteorTrailDecay, boolean meteorRandomDecay) {  
+    RgbColor color_tmp(HtmlColor((uint32_t) _color));
+    uint16_t meteorSize = _maxled * 0.15;
+	
+	if(counter_mode_step == 0){
+      RgbColor color_blk(HtmlColor(BLACK));
+      _strip.ClearTo(color_blk);
+	}
+  
+    if( counter_mode_step <= _maxled*2 ) {
+      // fade brightness all LEDs one step
+      for(uint16_t j=0; j <= _maxled; j++) {
+        if( (!meteorRandomDecay) || (random(10)>5) ) {
+          fadeToBlackVal(j, meteorTrailDecay );        
+        }
+      }
+      // draw meteor
+      for(uint16_t j = 0; j < meteorSize; j++) {
+        if( ( (counter_mode_step)-j <= _maxled) && ((counter_mode_step)-j >= 0) ) {
+          if(!_reverse){
+            _strip.SetPixelColor((counter_mode_step)-j, color_tmp);
+		  } else {
+		    _strip.SetPixelColor(_maxled - counter_mode_step + j, color_tmp);
+          }
+        } 
+      }
+    } 
+
+    counter_mode_step = (counter_mode_step + 1) % (2*(_maxled + 1));
+    return (_speed / (2*(_maxled + 1)));
+  }
+  
+  uint16_t mode_meteor_rain(void) {
+    return meteorRain(64, true);
+  }
+  
   //////////// End of Effects ////////////
   
   const __FlashStringHelper*
@@ -1508,5 +1643,10 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
 
   mode_ptr
       _mode[MODE_COUNT]; // SRAM footprint: 4 bytes per element
+	  
+  uint8_t _segment_index = 0;
+  uint8_t _num_segments = 1;
+  segment _segments[MAX_NUM_SEGMENTS];
+  segment_runtime _segment_runtimes[MAX_NUM_SEGMENTS];
 };
 #endif
