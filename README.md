@@ -9,6 +9,7 @@ This uses NeoPixelBrightnessBus and borrows code from awesome animations develop
 ## Limitations
 - Works on ESP8266 (for now), ESP32?
 - DMA method uses pin RX / GPIO3
+- URAT method uses pin D4 / GPIO2
 - `Serial.begin();` needs to be started before `strip.Begin();` because both share the same pin.
 ## How to use the library
 * Download this GitHub [library](https://github.com/debsahu/NeoAnimationFX/archive/master.zip).
