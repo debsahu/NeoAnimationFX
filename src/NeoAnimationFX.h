@@ -1620,18 +1620,16 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   
     if( SEGMENT_RUNTIME.counter_mode_step <= SEGMENT_LENGTH*2 ) {
       // fade brightness all LEDs one step
-      for(uint16_t j=0; j <= SEGMENT_LENGTH; j++) {
+      for(uint16_t i=0; i <= SEGMENT_LENGTH; i++) {
         if( (!meteorRandomDecay) || (random(10)>5) ) {
-          fadeToBlackVal(j, meteorTrailDecay );        
+          fadeToBlackVal(i, meteorTrailDecay );        
         }
       }
       // draw meteor
-      for(uint16_t j = 0; j <= meteorSize; j++) {
-        if( ( (SEGMENT_RUNTIME.counter_mode_step)-j <= SEGMENT_LENGTH) && ((SEGMENT_RUNTIME.counter_mode_step)-j >= 0) ) {
+      for(uint16_t i = 0; i <= meteorSize; i++) {
+        if( ( (SEGMENT_RUNTIME.counter_mode_step)-i <= SEGMENT_LENGTH) && ((SEGMENT_RUNTIME.counter_mode_step)-i >= 0) ) {
           if(!SEGMENT.reverse){
-            _strip.SetPixelColor(SEGMENT_RUNTIME.counter_mode_step - j, SEGMENT.colors[0]);
 		  } else {
-		    _strip.SetPixelColor(SEGMENT_LENGTH - SEGMENT_RUNTIME.counter_mode_step + j, SEGMENT.colors[0]);
           }
         } 
       }
