@@ -95,6 +95,7 @@
 #define FX_MODE_TRICOLOR_CHASE          54
 #define FX_MODE_ICU                     55
 #define FX_MODE_CUSTOM                  56
+#define FX_MODE_METEOR_RAIN             57
 
 #define MAX_PIXEL_CT 3000
 
@@ -231,6 +232,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       _mode[FX_MODE_ICU]                     = &NeoAnimationFX::mode_icu;
 #endif
       _mode[FX_MODE_CUSTOM]                  = &NeoAnimationFX::mode_custom;
+      _mode[FX_MODE_METEOR_RAIN]             = &NeoAnimationFX::mode_meteor_rain;
 
       _name[FX_MODE_STATIC]                    = F("Static");
       _name[FX_MODE_BLINK]                     = F("Blink");
@@ -289,6 +291,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       _name[FX_MODE_TRICOLOR_CHASE]            = F("Tricolor Chase");
       _name[FX_MODE_ICU]                       = F("ICU");
       _name[FX_MODE_CUSTOM]                    = F("Custom");
+	  _name[FX_MODE_METEOR_RAIN]               = F("Meteor Rain");
 
       _brightness = DEFAULT_BRIGHTNESS;
 	  _running = false;
