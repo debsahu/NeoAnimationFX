@@ -128,7 +128,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   
   // segment parameters
   
-  /* set default values c way
+  /* set default values c way 
   struct segment_struct {
     uint8_t  mode;
     RgbColor color;
@@ -150,7 +150,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
 	// set default values c++ way
 	Segment(): 
 	  mode(FX_MODE_STATIC), 
-	  colors({(RgbColor) HtmlColor(DEFAULT_COLOR), (RgbColor) HtmlColor(DEFAULT_COLOR), (RgbColor) HtmlColor(DEFAULT_COLOR)}), 
+	  colors({(RgbColor) HtmlColor(DEFAULT_COLOR), (RgbColor) HtmlColor(BLACK), (RgbColor) HtmlColor(GREEN)}), 
 	  speed(DEFAULT_SPEED), 
 	  start(0), 
 	  stop(7), 
@@ -295,22 +295,11 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
 
       _brightness = DEFAULT_BRIGHTNESS;
 	  _running = false;
-	  _color = DEFAULT_COLOR;
-	  _setmode = DEFAULT_MODE;
-	  _speed = DEFAULT_SPEED;
-	  _reverse = false;
-	  counter_mode_step = 0;
-	  counter_mode_call = 0;
-	  next_time = 0;
-	  aux_param = 0;
-	  (_strip.PixelCount() >= MAX_PIXEL_CT) ? _maxled = MAX_PIXEL_CT - 1 : _maxled = _strip.PixelCount() - 1 ;
-	  
 	  _num_segments = 1;
       _segments[0].mode = DEFAULT_MODE;
-	  //RgbColor default_color(HtmlColor(DEFAULT_COLOR));
       _segments[0].colors[0] = (RgbColor) HtmlColor(DEFAULT_COLOR);
       _segments[0].start = 0;
-	  (_strip.PixelCount() >= MAX_PIXEL_CT) ? _segments[0].stop = MAX_PIXEL_CT - 1 : _segments[0].stop = _strip.PixelCount() ;
+	  (_strip.PixelCount() >= MAX_PIXEL_CT) ? _segments[0].stop = MAX_PIXEL_CT : _segments[0].stop = _strip.PixelCount() ;
       _segments[0].speed = DEFAULT_SPEED;
       RESET_RUNTIME;
     }
@@ -325,11 +314,14 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     if(_running || _triggered) {
       unsigned long now = millis(); // Be aware, millis() rolls over every 49 days
       bool doShow = false;
-      if(now > next_time || _triggered) {
-        doShow = true;
-        uint16_t delay = (this->*_mode[_setmode])();
-        next_time = now + max((int)delay, SPEED_MIN);
-        counter_mode_call++;
+      for(uint8_t i=0; i < _num_segments; i++) {
+        _segment_index = i;
+        if(now > SEGMENT_RUNTIME.next_time || _triggered) {
+          doShow = true;
+          uint16_t delay = (this->*_mode[SEGMENT.mode])();
+          SEGMENT_RUNTIME.next_time = now + max((int)delay, SPEED_MIN);
+          SEGMENT_RUNTIME.counter_mode_call++;
+        }
       }
       if(doShow) {
         //delay(1); // for ESP32 (see https://forums.adafruit.com/viewtopic.php?f=47&t=117327)
@@ -340,8 +332,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   }
   
   void start() {
-	///RESET_RUNTIME;
-	counter_mode_step = 0; counter_mode_call = 0; next_time = 0; aux_param = 0;
+	RESET_RUNTIME;
     _running = true;
   }
 
@@ -363,30 +354,23 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   }
 
   void setMode(uint8_t m) {
-	///RESET_RUNTIME;
-	///_segments[0].mode = constrain(m, 0, MODE_COUNT - 1);
-	counter_mode_step = 0; counter_mode_call = 0; next_time = 0; aux_param = 0;
-    _setmode = constrain(m, 0, MODE_COUNT - 1);
+	RESET_RUNTIME;
+	_segments[0].mode = constrain(m, 0, MODE_COUNT - 1);
     setBrightness(_brightness);
   }
 
   void setSpeed(uint16_t s) {
-	/// RESET_RUNTIME;
-    /// _segments[0].speed = constrain(s, SPEED_MIN, SPEED_MAX);
-	counter_mode_step = 0; counter_mode_call = 0; next_time = 0; aux_param = 0;
-    _speed = constrain(s, SPEED_MIN, SPEED_MAX);
-	// Serial.printf("Speed FX: %u\n", s);
+	RESET_RUNTIME;
+    _segments[0].speed = constrain(s, SPEED_MIN, SPEED_MAX);
   }
 
   void increaseSpeed(uint8_t s) {
-	///uint16_t newSpeed = constrain(SEGMENT.speed + s, SPEED_MIN, SPEED_MAX);
-    uint16_t newSpeed = constrain(_speed + s, SPEED_MIN, SPEED_MAX);
+	uint16_t newSpeed = constrain(SEGMENT.speed + s, SPEED_MIN, SPEED_MAX);
     setSpeed(newSpeed);
   }
 
   void decreaseSpeed(uint8_t s) {
-	///uint16_t newSpeed = constrain(SEGMENT.speed - s, SPEED_MIN, SPEED_MAX);
-    uint16_t newSpeed = constrain(_speed - s, SPEED_MIN, SPEED_MAX);
+	uint16_t newSpeed = constrain(SEGMENT.speed - s, SPEED_MIN, SPEED_MAX);
     setSpeed(newSpeed);
   }
 
@@ -434,10 +418,14 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     return _segments[0].stop - _segments[0].start + 1;
   }
 
+  void setColor(RgbColor c) {
+    RESET_RUNTIME;
+    _segments[0].colors[0] = c;
+  }
+  
   void setColor(uint32_t c) {
-    ///RESET_RUNTIME;
-    ///_segments[0].colors[0] = c;
-    _color = c;
+    RESET_RUNTIME;
+    _segments[0].colors[0] = (RgbColor) HtmlColor((uint32_t) c);
   }
   
   void setColor(uint8_t r, uint8_t g, uint8_t b) {
@@ -449,18 +437,16 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
 	_strip.SetPixelColor(pixel, color_tmp);
   }
   
-  void setReverse(bool rev) {
-    _reverse = rev;
+  void setPixelColor(uint16_t pixel, RgbColor pixel_rgb_color) {
+	_strip.SetPixelColor(pixel, pixel_rgb_color);
   }
   
   uint8_t getMode(void) {
-	///return _segments[0].mode;
-    return _setmode;
+	return _segments[0].mode;
   }
 
   uint16_t getSpeed(void) {
-	///return _segments[0].speed;
-    return _speed;
+	return _segments[0].speed;
   }
 
   uint8_t getBrightness(void) {
@@ -472,27 +458,15 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   }
   
   uint32_t getColor(void) {
-	///return _segments[0].colors[0];
-    return _color;
+	return _segments[0].colors[0];
   }
   
   uint16_t numPixels(void){
-	///return _segments[0].stop - _segments[0].start + 1;
-    return _maxled;
+	return _segments[0].stop - _segments[0].start + 1;
   }
 
   boolean isRunning() {
     return _running;
-  }
-  
-  boolean isReverse(){
-    return _reverse;
-  }
-  
-  void testMode(){
-	uint16_t delay = (this->*_mode[_setmode])();
-	//uint16_t out = mode_static();
-	_strip.Show();
   }
   
   const __FlashStringHelper* getModeName(uint8_t m) {
@@ -531,7 +505,6 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       _segments[n].mode = mode;
       _segments[n].speed = speed;
       _segments[n].reverse = reverse;
-      //_segments[n].colors[0] = color;
 	  _segments[n].colors[0] = (RgbColor) HtmlColor(color);
     }
   }
@@ -546,7 +519,6 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       _segments[n].reverse = reverse;
 
       for(uint8_t i=0; i<NUM_COLORS; i++) {
-        //_segments[n].colors[i] = colors[i];
 		_segments[n].colors[i] = (RgbColor) HtmlColor(colors[i]);
       }
     }
@@ -573,17 +545,19 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * The colours are a transition r -> g -> b -> back to r
   * Inspired by the Adafruit examples.
   */
-  uint32_t color_wheel(uint8_t pos) {
+  RgbColor color_wheel(uint8_t pos) {
     pos = 255 - pos;
+	uint32_t ret_hex;
     if(pos < 85) {
-      return ((uint32_t)(255 - pos * 3) << 16) | ((uint32_t)(0) << 8) | (pos * 3);
+      ret_hex = ((uint32_t)(255 - pos * 3) << 16) | ((uint32_t)(0) << 8) | (pos * 3);
     } else if(pos < 170) {
       pos -= 85;
-      return ((uint32_t)(0) << 16) | ((uint32_t)(pos * 3) << 8) | (255 - pos * 3);
+      ret_hex = ((uint32_t)(0) << 16) | ((uint32_t)(pos * 3) << 8) | (255 - pos * 3);
     } else {
       pos -= 170;
-      return ((uint32_t)(pos * 3) << 16) | ((uint32_t)(255 - pos * 3) << 8) | (0);
+      ret_hex = ((uint32_t)(pos * 3) << 16) | ((uint32_t)(255 - pos * 3) << 8) | (0);
     }
+	return (RgbColor) HtmlColor((uint32_t) ret_hex);
   }
 
 
@@ -608,24 +582,12 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
 
   private:
   T_PIXEL_METHOD& _strip;
-  
-  uint32_t 
-    _color,
-    counter_mode_step,
-    counter_mode_call;
-  
-  uint16_t 
-    _maxled,
-	_speed,
-	aux_param;
 	
   uint8_t 
-      _brightness,
-	  _setmode;
+      _brightness;
 	  
   boolean
       _running,
-	  _reverse,
       _triggered;
 	  
   unsigned long next_time;
@@ -636,29 +598,64 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   } 
   
   void strip_off() {
-    RgbColor dark_off(HtmlColor(BLACK));
-	_strip.ClearTo(dark_off);
-    // for(uint16_t i=0; i <= _maxled; i++) {
-      // _strip.SetPixelColor(i, dark_off);
-    // }
+	_strip.ClearTo(rgbcolor_black);
     _strip.Show();
   }
 
   //////////// Start of Effects ////////////
   
   /*
+  * Fades all pixel to Black (percentage rgb)
+  */
+  void fadeToBlack(uint16_t ledNo, byte fadeValue) {
+    RgbColor oldColor = _strip.GetPixelColor(ledNo);
+    uint8_t r = (oldColor.R <= 10)? 0 : (uint8_t) oldColor.R - (oldColor.R * fadeValue / 256);
+    uint8_t g = (oldColor.G <= 10)? 0 : (uint8_t) oldColor.G - (oldColor.G * fadeValue / 256);
+    uint8_t b = (oldColor.B <= 10)? 0 : (uint8_t) oldColor.B - (oldColor.B * fadeValue / 256);
+	RgbColor newColor(r, g, b);    
+    _strip.SetPixelColor(ledNo, newColor);
+  }
+
+  /*
+  * Fades all pixel to Black (use absolute value)
+  */
+  void fadeToWhiteVal(uint16_t ledNo, uint8_t fadeValue) {
+    RgbColor color_tmp = _strip.GetPixelColor(ledNo);
+	if(fadeValue < 10) fadeValue = 0; 
+	color_tmp.Lighten(fadeValue);
+    _strip.SetPixelColor(ledNo, color_tmp);
+  }
+
+  /*
+  * Fades all pixel to Black (percentage rgb)
+  */
+  void fadeToWhite(uint16_t ledNo, byte fadeValue) {
+    RgbColor oldColor = _strip.GetPixelColor(ledNo);
+    uint8_t r = (oldColor.R <= 10)? 0 : (uint8_t) oldColor.R + (oldColor.R * fadeValue / 256);
+    uint8_t g = (oldColor.G <= 10)? 0 : (uint8_t) oldColor.G + (oldColor.G * fadeValue / 256);
+    uint8_t b = (oldColor.B <= 10)? 0 : (uint8_t) oldColor.B + (oldColor.B * fadeValue / 256);
+	RgbColor newColor(r, g, b);    
+    _strip.SetPixelColor(ledNo, newColor);
+  }
+
+  /*
+  * Fades all pixel to Black (use absolute value)
+  */
+  void fadeToBlackVal(uint16_t ledNo, uint8_t fadeValue) {
+    RgbColor color_tmp = _strip.GetPixelColor(ledNo);
+	if(fadeValue < 10) fadeValue = 0; 
+	color_tmp.Darken(fadeValue);
+    _strip.SetPixelColor(ledNo, color_tmp);
+  }
+  
+  /*
   * No blinking. Just plain old static light.
   */
-  uint16_t mode_static(void) {
-	for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, (RgbColor) HtmlColor((uint32_t) _color));
+  uint16_t mode_static(void) {	
+	for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, SEGMENT.colors[0]);
     }
-	return 500;
-	
-	/* for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, (RgbColor) HtmlColor((uint32_t) SEGMENT.colors[0]));
-    }
-    return 500; */
+    return 500;
   }
   
   /*
@@ -666,18 +663,18 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Alternate between color1 and color2
   * if(strobe == true) then create a strobe effect
   */
-  uint16_t blink(uint32_t color1, uint32_t color2, bool strobe) {
-    uint32_t color = ((counter_mode_call & 1) == 0) ? color1 : color2;
-    if(_reverse) color = (color == color1) ? color2 : color1;
-	
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, (RgbColor) HtmlColor((uint32_t) color));
+  uint16_t blink(RgbColor color1, RgbColor color2, bool strobe) {
+    RgbColor color = ((SEGMENT_RUNTIME.counter_mode_call & 1) == 0) ? color1 : color2;
+    if(SEGMENT.reverse) color = (color == color1) ? color2 : color1;
+
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, color);
     }
 
-    if((counter_mode_call & 1) == 0) {
-      return strobe ? 20 : (_speed / 2);
+    if((SEGMENT_RUNTIME.counter_mode_call & 1) == 0) {
+      return strobe ? 20 : (SEGMENT.speed / 2);
     } else {
-      return strobe ? _speed - 20 : (_speed / 2);
+      return strobe ? SEGMENT.speed - 20 : (SEGMENT.speed / 2);
     }
   }
 
@@ -685,9 +682,9 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Normal blinking. 50% on/off time.
   */
   uint16_t mode_blink(void) {
-    return blink(_color, BLACK, false);
+    return blink(SEGMENT.colors[0], SEGMENT.colors[1], false);
   }
-  
+
   /*
   * Does the "standby-breathing" of well known i-Devices. Fixed Speed.
   * Use mode "fade" if you like to have something similar with a different speed.
@@ -697,83 +694,74 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     uint16_t breath_delay_steps[] =     {   7,   9,  13, 15, 16, 17, 18, 930, 19, 18, 15, 13,   9,   7,   4,   5,  10 }; // magic numbers for breathing LED
     uint8_t breath_brightness_steps[] = { 150, 125, 100, 75, 50, 25, 16,  15, 16, 25, 50, 75, 100, 125, 150, 220, 255 }; // even more magic numbers!
 
-    if(counter_mode_call == 0) {  
-      aux_param = breath_brightness_steps[0] + 1; // we use aux_param to store the brightness
+    if(SEGMENT_RUNTIME.counter_mode_call == 0) {
+      SEGMENT_RUNTIME.aux_param = breath_brightness_steps[0] + 1; // we use aux_param to store the brightness
     }
 
-    uint8_t breath_brightness = aux_param;
+    uint8_t breath_brightness = SEGMENT_RUNTIME.aux_param;
 
-    if(counter_mode_step < 8) {
+    if(SEGMENT_RUNTIME.counter_mode_step < 8) {
       breath_brightness--;
     } else {
       breath_brightness++;
     }
 
     // update index of current delay when target brightness is reached, start over after the last step
-    if(breath_brightness == breath_brightness_steps[counter_mode_step]) {
-      counter_mode_step = (counter_mode_step + 1) % (sizeof(breath_brightness_steps)/sizeof(uint8_t));
+    if(breath_brightness == breath_brightness_steps[SEGMENT_RUNTIME.counter_mode_step]) {
+      SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % (sizeof(breath_brightness_steps)/sizeof(uint8_t));
     }
 
     int lum = map(breath_brightness, 0, 255, 0, _brightness);  // keep luminosity below brightness set by user
-    //uint8_t w = (_color >> 24 & 0xFF) * lum / _brightness; // modify RGBW colors with brightness info
-    uint8_t r = (_color >> 16 & 0xFF) * lum / _brightness;
-    uint8_t g = (_color >>  8 & 0xFF) * lum / _brightness;
-    uint8_t b = (_color       & 0xFF) * lum / _brightness;
-
-    RgbColor color_tmp(r, g, b);  
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp);
+    //uint8_t w = (SEGMENT.colors[0].W) * lum / _brightness; // modify RGBW colors with brightness info
+    uint8_t r = (SEGMENT.colors[0].R) * lum / _brightness;
+    uint8_t g = (SEGMENT.colors[0].G) * lum / _brightness;
+    uint8_t b = (SEGMENT.colors[0].B) * lum / _brightness;
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, r, g, b);
     }
 
-    aux_param = breath_brightness;
-    return breath_delay_steps[counter_mode_step];
+    SEGMENT_RUNTIME.aux_param = breath_brightness;
+    return breath_delay_steps[SEGMENT_RUNTIME.counter_mode_step];
   }
   
-  /*
-  * Color wipe function
-  * LEDs are turned on (color1) in sequence, then turned off (color2) in sequence.
-  * if (bool rev == true) then LEDs are turned off in reverse order
-  */
-  uint16_t color_wipe(uint32_t color1, uint32_t color2, bool rev) {
-    if(counter_mode_step < (_maxled + 1)) {
-      uint32_t led_offset = counter_mode_step;
-      RgbColor color1_tmp(HtmlColor((uint32_t) color1));
-      if(_reverse) {
-        _strip.SetPixelColor(_maxled + 1 - led_offset, color1_tmp);
+  uint16_t color_wipe(RgbColor color1, RgbColor color2, bool rev) {
+    if(SEGMENT_RUNTIME.counter_mode_step < SEGMENT_LENGTH) {
+      uint32_t led_offset = SEGMENT_RUNTIME.counter_mode_step;
+      if(SEGMENT.reverse) {
+        this->setPixelColor(SEGMENT.stop - led_offset, color1);
       } else {
-        _strip.SetPixelColor(led_offset, color1_tmp);
+        this->setPixelColor(SEGMENT.start + led_offset, color1);
       }
     } else {
-      uint32_t led_offset = counter_mode_step - (_maxled + 1);
-	  RgbColor color2_tmp(HtmlColor((uint32_t) color2));
-      if((_reverse && !rev) || (!_reverse && rev)) {
-        _strip.SetPixelColor(_maxled + 1 - led_offset, color2_tmp);
+      uint32_t led_offset = SEGMENT_RUNTIME.counter_mode_step - SEGMENT_LENGTH;
+      if((SEGMENT.reverse && !rev) || (!SEGMENT.reverse && rev)) {
+        this->setPixelColor(SEGMENT.stop - led_offset, color2);
       } else {
-        _strip.SetPixelColor(led_offset, color2_tmp);
+        this->setPixelColor(SEGMENT.start + led_offset, color2);
       }
     }
 
-    counter_mode_step = (counter_mode_step + 1) % ((_maxled + 1) * 2);
-    return (_speed / ((_maxled + 1) * 2));
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % (SEGMENT_LENGTH * 2);
+    return (SEGMENT.speed / (SEGMENT_LENGTH * 2));
   }
   
   /*
   * Lights all LEDs one after another.
   */
   uint16_t mode_color_wipe(void) {
-    return color_wipe(_color, BLACK, false);
+    return color_wipe(SEGMENT.colors[0], SEGMENT.colors[1], false);
   }
 
   uint16_t mode_color_wipe_inv(void) {
-    return color_wipe(BLACK, _color, false);
+    return color_wipe(SEGMENT.colors[1], SEGMENT.colors[0], false);
   }
 
   uint16_t mode_color_wipe_rev(void) {
-    return color_wipe(_color, BLACK, true);
+    return color_wipe(SEGMENT.colors[0], SEGMENT.colors[1], true);
   }
 
   uint16_t mode_color_wipe_rev_inv(void) {
-    return color_wipe(BLACK, _color, true);
+    return color_wipe(SEGMENT.colors[1], SEGMENT.colors[0], true);
   }
   
   /*
@@ -781,11 +769,11 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Then starts over with another color.
   */
   uint16_t mode_color_wipe_random(void) {
-    if(counter_mode_step % _maxled == 0) { // aux_param will store our random color wheel index
-      aux_param = get_random_wheel_index(aux_param);
+    if(SEGMENT_RUNTIME.counter_mode_step % SEGMENT_LENGTH == 0) { // aux_param will store our random color wheel index
+      SEGMENT_RUNTIME.aux_param = get_random_wheel_index(SEGMENT_RUNTIME.aux_param);
     }
-    uint32_t color = color_wheel(aux_param);
-    return color_wipe(_color, color, false) * 2;
+    RgbColor color = color_wheel(SEGMENT_RUNTIME.aux_param);
+    return color_wipe(color, color, false) * 2;
   }
 
   /*
@@ -793,14 +781,13 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * to the next random color.
   */
   uint16_t mode_random_color(void) {
-    aux_param = get_random_wheel_index(aux_param); // aux_param will store our random color wheel index
-    uint32_t color = color_wheel(aux_param);
+    SEGMENT_RUNTIME.aux_param = get_random_wheel_index(SEGMENT_RUNTIME.aux_param); // aux_param will store our random color wheel index
+    RgbColor color = color_wheel(SEGMENT_RUNTIME.aux_param);
 
-    RgbColor color_tmp(HtmlColor((uint32_t) color));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp);
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, color);
     }
-    return _speed;
+    return (SEGMENT.speed);
   }
 
   /*
@@ -808,17 +795,14 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * to another random color.
   */
   uint16_t mode_single_dynamic(void) {
-    if(counter_mode_call == 0) {
-      for(uint16_t i=0; i <= _maxled; i++) {
-        uint32_t color = color_wheel(random(256));
-        RgbColor color_tmp(HtmlColor((uint32_t) color));
-        _strip.SetPixelColor(i, color_tmp);
+    if(SEGMENT_RUNTIME.counter_mode_call == 0) {
+      for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+        this->setPixelColor(i, color_wheel(random(256)));
       }
     }
-    uint32_t color = color_wheel(random(256));
-    RgbColor color_tmp(HtmlColor((uint32_t) color));
-    _strip.SetPixelColor(0 + random(_maxled), color_tmp);
-    return _speed;
+
+    this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color_wheel(random(256)));
+    return (SEGMENT.speed);
   }
 
   /*
@@ -826,136 +810,127 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * to new random colors.
    */
   uint16_t mode_multi_dynamic(void) {
-    for(uint16_t i=0; i <= _maxled; i++) {
-        uint32_t color = color_wheel(random(256));
-        RgbColor color_tmp(HtmlColor((uint32_t) color));
-        _strip.SetPixelColor(i, color_tmp);
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, color_wheel(random(256)));
     }
-    return _speed;
+    return (SEGMENT.speed);
   }
   
   /*
   * Cycles all LEDs at once through a rainbow.
   */
   uint16_t mode_rainbow(void) {
-    uint32_t color = color_wheel(counter_mode_step);
-    RgbColor color_tmp(HtmlColor((uint32_t) color));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp);
+    RgbColor color = color_wheel(SEGMENT_RUNTIME.counter_mode_step);
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, color);
     }
 
-    counter_mode_step = (counter_mode_step + 1) & 0xFF;
-    return (_speed / 256);
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) & 0xFF;
+    return (SEGMENT.speed / 256);
   }
 
   /*
   * Cycles a rainbow over the entire string of LEDs.
   */
   uint16_t mode_rainbow_cycle(void) {
-    for(uint16_t i=0; i <= _maxled; i++) {
-      uint32_t color = color_wheel(((i * 256 / _maxled) + counter_mode_step) & 0xFF);
-	  RgbColor color_tmp(HtmlColor((uint32_t) color));
-      _strip.SetPixelColor( i, color_tmp);
+    for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
+	    RgbColor color = color_wheel(((i * 256 / SEGMENT_LENGTH) + SEGMENT_RUNTIME.counter_mode_step) & 0xFF);
+      this->setPixelColor(SEGMENT.start + i, color);
     }
 
-    counter_mode_step = (counter_mode_step + 1) & 0xFF;
-    return (_speed / 256);
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) & 0xFF;
+    return (SEGMENT.speed / 256);
   }
   
   /*
   * Runs a single pixel back and forth.
   */
   uint16_t mode_scan(void) {
-    if(counter_mode_step > (_maxled * 2) - 3) {
-      counter_mode_step = 0;
+    if(SEGMENT_RUNTIME.counter_mode_step > (SEGMENT_LENGTH * 2) - 3) {
+      SEGMENT_RUNTIME.counter_mode_step = 0;
+    }
+	
+	for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, rgbcolor_black);
     }
 
-    RgbColor color_tmp1(HtmlColor(BLACK));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp1);
+    int led_offset = SEGMENT_RUNTIME.counter_mode_step - (SEGMENT_LENGTH - 1);
+    led_offset = abs(led_offset); 
+
+    if(SEGMENT.reverse) {
+      this->setPixelColor(SEGMENT.stop - led_offset, SEGMENT.colors[0]);
+    } else {
+      this->setPixelColor(SEGMENT.start + led_offset, SEGMENT.colors[0]);
     }
 
-    int led_offset = counter_mode_step - (_maxled - 1);
-    led_offset = abs(led_offset);
-
-    RgbColor color_tmp2(HtmlColor((uint32_t) _color));
-	(_reverse) ? _strip.SetPixelColor(led_offset, color_tmp2) : _strip.SetPixelColor(_maxled - led_offset, color_tmp2);
-
-    counter_mode_step++;
-    return (_speed / (_maxled * 2));
+    SEGMENT_RUNTIME.counter_mode_step++;
+    return (SEGMENT.speed / (SEGMENT_LENGTH * 2));
   }
 
   /*
   * Runs two pixel back and forth in opposite directions.
   */
   uint16_t mode_dual_scan(void) {
-    if(counter_mode_step > (_maxled * 2) - 3) {
-      counter_mode_step = 0;
+    if(SEGMENT_RUNTIME.counter_mode_step > (SEGMENT_LENGTH * 2) - 3) {
+      SEGMENT_RUNTIME.counter_mode_step = 0;
     }
 
-    RgbColor color_tmp1(HtmlColor(BLACK));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp1);
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, BLACK);
     }
 
-    int led_offset = counter_mode_step - (_maxled - 1);
+    int led_offset = SEGMENT_RUNTIME.counter_mode_step - (SEGMENT_LENGTH - 1);
     led_offset = abs(led_offset);
 
-    RgbColor color_tmp2(HtmlColor((uint32_t) _color));
-    _strip.SetPixelColor(led_offset, color_tmp2);
-    _strip.SetPixelColor(_maxled - led_offset, color_tmp2);
+    this->setPixelColor(SEGMENT.start + led_offset, SEGMENT.colors[0]);
+    this->setPixelColor(SEGMENT.start + SEGMENT_LENGTH - led_offset - 1, SEGMENT.colors[0]);
 
-    counter_mode_step++;
-    return (_speed / (_maxled * 2));
+    SEGMENT_RUNTIME.counter_mode_step++;
+    return (SEGMENT.speed / (SEGMENT_LENGTH * 2));
   }
   
   /*
   * Fades the LEDs on and (almost) off again.
   */
   uint16_t mode_fade(void) {
-    int lum = counter_mode_step - 31;
+    int lum = SEGMENT_RUNTIME.counter_mode_step - 31;
     lum = 63 - (abs(lum) * 2);
     lum = map(lum, 0, 64, min(25, (int)_brightness), _brightness);
 
-    //uint8_t w = (_color >> 24 & 0xFF) * lum / _brightness; // modify RGBW colors with brightness info
-    uint8_t r = (_color >> 16 & 0xFF) * lum / _brightness;
-    uint8_t g = (_color >>  8 & 0xFF) * lum / _brightness;
-    uint8_t b = (_color       & 0xFF) * lum / _brightness;
-  
-    //RgbwColor color_tmp(r, g, b, w);
-	RgbColor color_tmp(r, g, b);
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp);
+    //uint8_t w = (SEGMENT.colors[0] >> 24 & 0xFF) * lum / _brightness; // modify RGBW colors with brightness info
+    uint8_t r = (SEGMENT.colors[0].R) * lum / _brightness;
+    uint8_t g = (SEGMENT.colors[0].G) * lum / _brightness;
+    uint8_t b = (SEGMENT.colors[0].B) * lum / _brightness;
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, r, g, b);
     }
 
-    counter_mode_step = (counter_mode_step + 1) % 64;
-    return (_speed / 64);
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % 64;
+    return (SEGMENT.speed / 64);
   }
   
   /*
   * theater chase function
   */
-  uint16_t theater_chase(uint32_t color1, uint32_t color2) {
-    counter_mode_call = counter_mode_call % 3;
-    RgbColor color1_tmp(HtmlColor((uint32_t) color1));
-    RgbColor color2_tmp(HtmlColor((uint32_t) color2));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      if((i % 3) == counter_mode_call) {
-        if(_reverse) {
-          _strip.SetPixelColor(_maxled - i, color1_tmp);
+  uint16_t theater_chase(RgbColor color1, RgbColor color2) {
+    SEGMENT_RUNTIME.counter_mode_call = SEGMENT_RUNTIME.counter_mode_call % 3;
+    for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
+      if((i % 3) == SEGMENT_RUNTIME.counter_mode_call) {
+        if(SEGMENT.reverse) {
+          this->setPixelColor(SEGMENT.stop - i, color1);
         } else {
-          _strip.SetPixelColor(i, color1_tmp);
+          this->setPixelColor(SEGMENT.start + i, color1);
         }
       } else {
-        if(_reverse) {
-          _strip.SetPixelColor(_maxled - i, color2_tmp);
+        if(SEGMENT.reverse) {
+          this->setPixelColor(SEGMENT.stop - i, color2);
         } else {
-          _strip.SetPixelColor(i, color2_tmp);
+          this->setPixelColor(SEGMENT.start + i, color2);
         }
       }
     }
 
-    return (_speed / _maxled);
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
@@ -963,7 +938,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Inspired by the Adafruit examples.
   */
   uint16_t mode_theater_chase(void) {
-    return theater_chase(_color, BLACK);
+    return theater_chase(SEGMENT.colors[0], rgbcolor_black);
   }
 
   /*
@@ -971,52 +946,44 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Inspired by the Adafruit examples.
   */
   uint16_t mode_theater_chase_rainbow(void) {
-    counter_mode_step = (counter_mode_step + 1) & 0xFF;
-    return theater_chase(color_wheel(counter_mode_step), BLACK);
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) & 0xFF;
+    return theater_chase(color_wheel(SEGMENT_RUNTIME.counter_mode_step), BLACK);
   }
   
   /*
   * Running lights effect with smooth sine transition.
   */
   uint16_t mode_running_lights(void) {
-    //uint8_t w = ((_color >> 24) & 0xFF);
-    uint8_t r = ((_color >> 16) & 0xFF);
-    uint8_t g = ((_color >>  8) & 0xFF);
-    uint8_t b = (_color         & 0xFF);
-
-    float radPerLed = (2.0 * 3.14159) / _maxled;
-    for(uint16_t i=0; i <= _maxled; i++) {
-      int lum = map((int)(sin((i + counter_mode_step) * radPerLed) * 128), -128, 128, 0, 255);
-      //RgbwColor color_tmp((r * lum) / 256, (g * lum) / 256, (b * lum) / 256, (w * lum) / 256);
-	  RgbColor color_tmp((r * lum) / 256, (g * lum) / 256, (b * lum) / 256);
-      if(_reverse) {
-        _strip.SetPixelColor( i, color_tmp);
+    float radPerLed = (2.0 * 3.14159) / SEGMENT_LENGTH;
+    for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
+      int lum = map((int)(sin((i + SEGMENT_RUNTIME.counter_mode_step) * radPerLed) * 128), -128, 128, 0, 255);
+      if(SEGMENT.reverse) {
+        this->setPixelColor(SEGMENT.start + i, (SEGMENT.colors[0].R * lum) / 256, (SEGMENT.colors[0].G * lum) / 256, (SEGMENT.colors[0].B * lum) / 256);
       } else {
-        _strip.SetPixelColor(_maxled - i, color_tmp);
+        this->setPixelColor(SEGMENT.stop - i, (SEGMENT.colors[0].R * lum) / 256, (SEGMENT.colors[0].G * lum) / 256, (SEGMENT.colors[0].B * lum) / 256);
       }
     }
-    counter_mode_step = (counter_mode_step + 1) % _maxled;
-    return (_speed / _maxled);
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
    * twinkle function
    */
-  uint16_t twinkle(uint32_t color) {
-    if(counter_mode_step == 0) {
-      RgbColor color_blk(HtmlColor(BLACK));
-      for(uint16_t i=0; i <= _maxled; i++) {
-        _strip.SetPixelColor(i, color_blk);
+  uint16_t twinkle(RgbColor color) {
+    if(SEGMENT_RUNTIME.counter_mode_step == 0) {
+      for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+        this->setPixelColor(i, BLACK);
       }
-      uint16_t min_leds = max(1, (_maxled+1) / 5); // make sure, at least one LED is on
-      uint16_t max_leds = max(1, (_maxled+1) / 2); // make sure, at least one LED is on
-      counter_mode_step = random(min_leds, max_leds);
+      uint16_t min_leds = max(1, SEGMENT_LENGTH / 5); // make sure, at least one LED is on
+      uint16_t max_leds = max(1, SEGMENT_LENGTH / 2); // make sure, at least one LED is on
+      SEGMENT_RUNTIME.counter_mode_step = random(min_leds, max_leds);
     }
-    RgbColor color_tmp(HtmlColor((uint32_t) color));
-    _strip.SetPixelColor(random(_maxled), color_tmp);
 
-    counter_mode_step--;
-    return (_speed / (_maxled+1));
+    this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
+
+    SEGMENT_RUNTIME.counter_mode_step--;
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
@@ -1024,7 +991,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Inspired by www.tweaking4all.com/hardware/arduino/adruino-led-strip-effects/
   */
   uint16_t mode_twinkle(void) {
-    return twinkle(_color);
+    return twinkle(SEGMENT.colors[0]);
   }
 
   /*
@@ -1040,16 +1007,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * fades out the current segment by dividing each pixel's intensity by 2
   */
   void fade_out() {
-    /* for(uint16_t i=0; i <= _maxled; i++) {
-      RgbColor rgbcolortmp = _strip.GetPixelColor(i);
-      byte R = (byte)rgbcolortmp.R; byte G = (byte)rgbcolortmp.G; byte B = (byte)rgbcolortmp.B;
-	  unsigned long rgbcolorhextmp = ((long)R << 16L) | ((long)G << 8L) | (long)B;
-      uint32_t color = (rgbcolorhextmp >> 1) & 0x7F7F7F;
-	  RgbColor color_tmp(HtmlColor((uint32_t) color));
-      _strip.SetPixelColor(i, color_tmp);
-    } */
-	
-	for(uint16_t i=0; i <= _maxled; i++) {
+	for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
       RgbColor rgbcolortmp = _strip.GetPixelColor(i);
 	  RgbColor color_tmp((uint8_t)(rgbcolortmp.R/2), (uint8_t)(rgbcolortmp.G/2), (uint8_t)(rgbcolortmp.B/2) );
       _strip.SetPixelColor(i, color_tmp);
@@ -1059,21 +1017,21 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   /*
   * twinkle_fade function
   */
-  uint16_t twinkle_fade(uint32_t color) {
+  uint16_t twinkle_fade(RgbColor color) {
     fade_out();
 
     if(random(3) == 0) {
-      RgbColor color_tmp(HtmlColor((uint32_t) color));
-      _strip.SetPixelColor(random(_maxled), color_tmp);
+      this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
     }
-    return (_speed / 8);
+    return (SEGMENT.speed / 8);
   }
+
 
   /*
   * Blink several LEDs on, fading out.
   */
   uint16_t mode_twinkle_fade(void) {
-    return twinkle_fade(_color);
+    return twinkle_fade(SEGMENT.colors[0]);
   }
 
   /*
@@ -1088,13 +1046,10 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Inspired by www.tweaking4all.com/hardware/arduino/adruino-led-strip-effects/
   */
   uint16_t mode_sparkle(void) {
-    RgbColor color_blk(HtmlColor(BLACK));
-    _strip.SetPixelColor(aux_param, color_blk);
-	
-    aux_param = random(_maxled); // aux_param stores the random led index
-    RgbColor color_tmp(HtmlColor((uint32_t) _color));
-    _strip.SetPixelColor(aux_param, color_tmp);
-    return (_speed / _maxled);
+    this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, rgbcolor_black);
+    SEGMENT_RUNTIME.aux_param = random(SEGMENT_LENGTH); // aux_param stores the random led index
+    this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, SEGMENT.colors[0]);
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
@@ -1102,21 +1057,20 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Inspired by www.tweaking4all.com/hardware/arduino/adruino-led-strip-effects/
   */
   uint16_t mode_flash_sparkle(void) {
-    RgbColor color_tmp(HtmlColor((uint32_t) _color));
-    RgbColor color_white(HtmlColor(WHITE));
-    if(counter_mode_call == 0) {
-      for(uint16_t i=0; i <= _maxled; i++) {
-        _strip.SetPixelColor(i, color_tmp);
+    if(SEGMENT_RUNTIME.counter_mode_call == 0) {
+      for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+        this->setPixelColor(i, SEGMENT.colors[0]);
       }
     }
-    _strip.SetPixelColor(aux_param, color_tmp);
+
+    this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, SEGMENT.colors[0]);
 
     if(random(5) == 0) {
-      aux_param = random(_maxled); // aux_param stores the random led index
-      _strip.SetPixelColor(aux_param, color_white);
+      SEGMENT_RUNTIME.aux_param = random(SEGMENT_LENGTH); // aux_param stores the random led index
+      this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, rgbcolor_white);
       return 20;
     } 
-    return _speed;
+    return SEGMENT.speed;
   }
 
   /*
@@ -1124,57 +1078,53 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Inspired by www.tweaking4all.com/hardware/arduino/adruino-led-strip-effects/
   */
   uint16_t mode_hyper_sparkle(void) {
-	RgbColor color_tmp(HtmlColor((uint32_t) _color));
-    RgbColor color_white(HtmlColor(WHITE));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp);
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, SEGMENT.colors[0]);
     }
 
     if(random(5) < 2) {
-      for(uint16_t i=0; i < max(1, _maxled/3); i++) {
-        _strip.SetPixelColor(random(_maxled), color_white);
+      for(uint16_t i=0; i < max(1, SEGMENT_LENGTH/3); i++) {
+        this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), rgbcolor_white);
       }
       return 20;
     }
-    return _speed;
+    return SEGMENT.speed;
   }
   
   /*
   * Classic Strobe effect.
   */
   uint16_t mode_strobe(void) {
-    return blink(_color, BLACK, true);
+    return blink(SEGMENT.colors[0], SEGMENT.colors[1], true);
   }
 
   /*
   * Classic Strobe effect. Cycling through the rainbow.
   */
   uint16_t mode_strobe_rainbow(void) {
-    return blink(color_wheel(counter_mode_call & 0xFF), BLACK, true);
+    return blink(color_wheel(SEGMENT_RUNTIME.counter_mode_call & 0xFF), SEGMENT.colors[1], true);
   }
     
   /*
   * Strobe effect with different strobe count and pause, controlled by speed.
   */
   uint16_t mode_multi_strobe(void) {
-    RgbColor color_blk(HtmlColor(BLACK));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_blk);
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, rgbcolor_black);
     }
 
-    uint16_t delay = _speed / (2 * ((_speed / 10) + 1));
-    if(counter_mode_step < (2 * ((_speed / 10) + 1))) {
-      if((counter_mode_step & 1) == 0) {
-	    RgbColor color_tmp(HtmlColor((uint32_t) _color));
-        for(uint16_t i=0; i <= _maxled; i++) {
-          _strip.SetPixelColor(i, color_tmp);
+    uint16_t delay = SEGMENT.speed / (2 * ((SEGMENT.speed / 10) + 1));
+    if(SEGMENT_RUNTIME.counter_mode_step < (2 * ((SEGMENT.speed / 10) + 1))) {
+      if((SEGMENT_RUNTIME.counter_mode_step & 1) == 0) {
+        for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+          this->setPixelColor(i, SEGMENT.colors[0]);
         }
         delay = 20;
       } else {
         delay = 50;
       }
     }
-    counter_mode_step = (counter_mode_step + 1) % ((2 * ((_speed / 10) + 1)) + 1);
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % ((2 * ((SEGMENT.speed / 10) + 1)) + 1);
     return delay;
   }
   
@@ -1182,7 +1132,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Classic Blink effect. Cycling through the rainbow.
   */
   uint16_t mode_blink_rainbow(void) {
-    return blink(color_wheel(counter_mode_call & 0xFF), BLACK, false);
+    return blink(color_wheel(SEGMENT_RUNTIME.counter_mode_call & 0xFF), SEGMENT.colors[1], false);
   }
   
   /*
@@ -1190,99 +1140,94 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * color1 = background color
   * color2 and color3 = colors of two adjacent leds
   */
-
-  uint16_t chase(uint32_t color1, uint32_t color2, uint32_t color3) {
-	//uint16_t maxled = (_maxled + 1);
-    uint16_t a = counter_mode_step;
-    uint16_t b = (a + 1) % (_maxled + 1);
-    uint16_t c = (b + 1) % (_maxled + 1);
-    RgbColor color1_tmp(HtmlColor((uint32_t) color1));
-    RgbColor color2_tmp(HtmlColor((uint32_t) color2));
-    RgbColor color3_tmp(HtmlColor((uint32_t) color3));
-    if(_reverse) {
-      _strip.SetPixelColor((_maxled + 1) - a, color1_tmp);
-      _strip.SetPixelColor((_maxled + 1) - b, color2_tmp);
-      _strip.SetPixelColor((_maxled + 1) - c, color3_tmp);
+  uint16_t chase(RgbColor color1, RgbColor color2, RgbColor color3) {
+    uint16_t a = SEGMENT_RUNTIME.counter_mode_step;
+    uint16_t b = (a + 1) % SEGMENT_LENGTH;
+    uint16_t c = (b + 1) % SEGMENT_LENGTH;
+    if(SEGMENT.reverse) {
+      this->setPixelColor(SEGMENT.stop - a, color1);
+      this->setPixelColor(SEGMENT.stop - b, color2);
+      this->setPixelColor(SEGMENT.stop - c, color3);
     } else {
-      _strip.SetPixelColor(0 + a, color1_tmp);
-      _strip.SetPixelColor(0 + b, color2_tmp);
-      _strip.SetPixelColor(0 + c, color3_tmp);
+      this->setPixelColor(SEGMENT.start + a, color1);
+      this->setPixelColor(SEGMENT.start + b, color2);
+      this->setPixelColor(SEGMENT.start + c, color3);
     }
 
-    counter_mode_step = (counter_mode_step + 1) % (_maxled + 1);
-    return (_speed / (_maxled + 1));
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
   * Bicolor chase mode
   */
   uint16_t mode_bicolor_chase(void) {
-    return chase(_color, color_wheel(random(255)), color_wheel(random(255)));
+    return chase(SEGMENT.colors[0], SEGMENT.colors[1], SEGMENT.colors[2]);
   }
   
   /*
   * White running on _color.
   */
   uint16_t mode_chase_color(void) {
-    return chase(_color, WHITE, WHITE);
+    return chase(SEGMENT.colors[0], rgbcolor_white, rgbcolor_white);
   }
 
   /*
   * Black running on _color.
   */
   uint16_t mode_chase_blackout(void) {
-    return chase(_color, BLACK, BLACK);
+    return chase(SEGMENT.colors[0], rgbcolor_black, rgbcolor_black);
   }
 
   /*
   * _color running on white.
   */
   uint16_t mode_chase_white(void) {
-    return chase(WHITE, _color, _color);
+    return chase(rgbcolor_white, SEGMENT.colors[0], SEGMENT.colors[0]);
   }
 
   /*
   * White running followed by random color.
   */
   uint16_t mode_chase_random(void) {
-    if(counter_mode_step == 0) {
-      aux_param = get_random_wheel_index(aux_param);
+    if(SEGMENT_RUNTIME.counter_mode_step == 0) {
+      SEGMENT_RUNTIME.aux_param = get_random_wheel_index(SEGMENT_RUNTIME.aux_param);
     }
-    return chase(color_wheel(aux_param), WHITE, WHITE);
+    return chase(color_wheel(SEGMENT_RUNTIME.aux_param), rgbcolor_white, rgbcolor_white);
   }
 
   /*
   * Rainbow running on white.
   */
   uint16_t mode_chase_rainbow_white(void) {
-    uint16_t n = counter_mode_step;
-    uint16_t m = (counter_mode_step + 1) % _maxled;
-    uint32_t color2 = color_wheel(((n * 256 / _maxled) + (counter_mode_call & 0xFF)) & 0xFF);
-    uint32_t color3 = color_wheel(((m * 256 / _maxled) + (counter_mode_call & 0xFF)) & 0xFF);
+    uint16_t n = SEGMENT_RUNTIME.counter_mode_step;
+    uint16_t m = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
+    RgbColor color2 = color_wheel(((n * 256 / SEGMENT_LENGTH) + (SEGMENT_RUNTIME.counter_mode_call & 0xFF)) & 0xFF);
+    RgbColor color3 = color_wheel(((m * 256 / SEGMENT_LENGTH) + (SEGMENT_RUNTIME.counter_mode_call & 0xFF)) & 0xFF);
 
-    return chase(WHITE, color2, color3);
+    return chase(rgbcolor_white, color2, color3);
   }
 
   /*
   * White running on rainbow.
   */
   uint16_t mode_chase_rainbow(void) {
-    uint8_t color_sep = 256 / _maxled;
-    uint8_t color_index = counter_mode_call & 0xFF;
-    uint32_t color = color_wheel(((counter_mode_step * color_sep) + color_index) & 0xFF);
+    uint8_t color_sep = 256 / SEGMENT_LENGTH;
+    uint8_t color_index = SEGMENT_RUNTIME.counter_mode_call & 0xFF;
+    RgbColor color = color_wheel(((SEGMENT_RUNTIME.counter_mode_step * color_sep) + color_index) & 0xFF);
 
-    return chase(color, WHITE, WHITE);
+    return chase(color, rgbcolor_white, rgbcolor_white);
   }
 
   /*
   * Black running on rainbow.
   */
   uint16_t mode_chase_blackout_rainbow(void) {
-    uint8_t color_sep = 256 / _maxled;
-    uint8_t color_index = counter_mode_call & 0xFF;
-    uint32_t color = color_wheel(((counter_mode_step * color_sep) + color_index) & 0xFF);
+    uint8_t color_sep = 256 / SEGMENT_LENGTH;
+    uint8_t color_index = SEGMENT_RUNTIME.counter_mode_call & 0xFF;
+    RgbColor color = color_wheel(((SEGMENT_RUNTIME.counter_mode_step * color_sep) + color_index) & 0xFF);
 
-    return chase(color, BLACK, BLACK);
+    return chase(color, rgbcolor_black, rgbcolor_black);
   }
 
   /*
@@ -1290,32 +1235,30 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   */
   uint16_t mode_chase_flash(void) {
     const static uint8_t flash_count = 4;
-    uint8_t flash_step = counter_mode_call % ((flash_count * 2) + 1);
+    uint8_t flash_step = SEGMENT_RUNTIME.counter_mode_call % ((flash_count * 2) + 1);
 
-    RgbColor color_tmp(HtmlColor((uint32_t) _color));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      _strip.SetPixelColor(i, color_tmp);
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
+      this->setPixelColor(i, SEGMENT.colors[0]);
     }
 
-    uint16_t delay = (_speed / _maxled);
-    RgbColor color_white(255, 255, 255);
+    uint16_t delay = (SEGMENT.speed / SEGMENT_LENGTH);
     if(flash_step < (flash_count * 2)) {
       if(flash_step % 2 == 0) {
-        uint16_t n = counter_mode_step;
-        uint16_t m = (counter_mode_step + 1) % _maxled;
-        if(_reverse) {
-          _strip.SetPixelColor(_maxled - n, color_white);
-          _strip.SetPixelColor(_maxled - m, color_white);
+        uint16_t n = SEGMENT_RUNTIME.counter_mode_step;
+        uint16_t m = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
+        if(SEGMENT.reverse) {
+          this->setPixelColor(SEGMENT.stop - n, rgbcolor_white);
+          this->setPixelColor(SEGMENT.stop - m, rgbcolor_white);
         } else {
-          _strip.SetPixelColor(0 + n, color_white);
-          _strip.SetPixelColor(0 + m, color_white);
+          this->setPixelColor(SEGMENT.start + n, rgbcolor_white);
+          this->setPixelColor(SEGMENT.start + m, rgbcolor_white);
         }
         delay = 20;
       } else {
         delay = 30;
       }
     } else {
-      counter_mode_step = (counter_mode_step + 1) % _maxled;
+      SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
     }
     return delay;
   }
@@ -1325,33 +1268,30 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   */
   uint16_t mode_chase_flash_random(void) {
     const static uint8_t flash_count = 4;
-    uint8_t flash_step = counter_mode_call % ((flash_count * 2) + 1);
+      uint8_t flash_step = SEGMENT_RUNTIME.counter_mode_call % ((flash_count * 2) + 1);
 
-    RgbColor color_tmp(HtmlColor(color_wheel(aux_param)));
-    for(uint16_t i=0; i < counter_mode_step; i++) {
-      _strip.SetPixelColor(0 + i, color_tmp);
+    for(uint16_t i=0; i < SEGMENT_RUNTIME.counter_mode_step; i++) {
+      this->setPixelColor(SEGMENT.start + i, color_wheel(SEGMENT_RUNTIME.aux_param));
     }
 
-    uint16_t delay = (_speed / _maxled);
-    RgbColor color_white(HtmlColor(WHITE));
-    RgbColor color_blk(HtmlColor(BLACK));
+    uint16_t delay = (SEGMENT.speed / SEGMENT_LENGTH);
     if(flash_step < (flash_count * 2)) {
-      uint16_t n = counter_mode_step;
-      uint16_t m = (counter_mode_step + 1) % _maxled;
+      uint16_t n = SEGMENT_RUNTIME.counter_mode_step;
+      uint16_t m = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
       if(flash_step % 2 == 0) {
-        _strip.SetPixelColor(0 + n, color_white);
-        _strip.SetPixelColor(0 + m, color_white);
+        this->setPixelColor(SEGMENT.start + n, rgbcolor_white);
+        this->setPixelColor(SEGMENT.start + m, rgbcolor_white);
         delay = 20;
       } else {
-        _strip.SetPixelColor(0 + n, color_tmp);
-        _strip.SetPixelColor(0 + m, color_blk);
+        this->setPixelColor(SEGMENT.start + n, color_wheel(SEGMENT_RUNTIME.aux_param));
+        this->setPixelColor(SEGMENT.start + m, rgbcolor_black);
         delay = 30;
       }
     } else {
-      counter_mode_step = (counter_mode_step + 1) % _maxled;
+      SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
 
-      if(counter_mode_step == 0) {
-        aux_param = get_random_wheel_index(aux_param);
+      if(SEGMENT_RUNTIME.counter_mode_step == 0) {
+        SEGMENT_RUNTIME.aux_param = get_random_wheel_index(SEGMENT_RUNTIME.aux_param);
       }
     }
     return delay;
@@ -1361,91 +1301,88 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Random color intruduced alternating from start and end of strip.
   */
   uint16_t mode_color_sweep_random(void) {
-    if(counter_mode_step % _maxled == 0) { // aux_param will store our random color wheel index
-      aux_param = get_random_wheel_index(aux_param);
+    if(SEGMENT_RUNTIME.counter_mode_step % SEGMENT_LENGTH == 0) { // aux_param will store our random color wheel index
+      SEGMENT_RUNTIME.aux_param = get_random_wheel_index(SEGMENT_RUNTIME.aux_param);
     }
-    uint32_t color = color_wheel(aux_param);
-    return color_wipe(_color, color, true) * 2;
+    RgbColor color = color_wheel(SEGMENT_RUNTIME.aux_param);
+    return color_wipe(color, color, true) * 2;
   }
   
   /*
   * Alternating pixels running function.
   */
-  uint16_t running(uint32_t color1, uint32_t color2) {
-    RgbColor color1_tmp(HtmlColor((uint32_t) color1));
-    RgbColor color2_tmp(HtmlColor((uint32_t) color2));
-    for(uint16_t i=0; i <= _maxled; i++) {
-      if((i + counter_mode_step) % 4 < 2) {
-        if(_reverse) {
-          _strip.SetPixelColor(0 + i, color1_tmp);
+  uint16_t running(RgbColor color1, RgbColor color2) {
+    for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
+      if((i + SEGMENT_RUNTIME.counter_mode_step) % 4 < 2) {
+        if(SEGMENT.reverse) {
+          this->setPixelColor(SEGMENT.start + i, color1);
         } else {
-          _strip.SetPixelColor(_maxled - i, color1_tmp);
+          this->setPixelColor(SEGMENT.stop - i, color1);
         }
       } else {
-        if(_reverse) {
-          _strip.SetPixelColor(0 + i, color2_tmp);
+        if(SEGMENT.reverse) {
+          this->setPixelColor(SEGMENT.start + i, color2);
         } else {
-          _strip.SetPixelColor(_maxled - i, color2_tmp);
+          this->setPixelColor(SEGMENT.stop - i, color2);
         }
       }
     }
 
-    counter_mode_step = (counter_mode_step + 1) & 0x3;
-    return (_speed / (_maxled));
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) & 0x3;
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
  /*
   * Alternating color/white pixels running.
   */
   uint16_t mode_running_color(void) {
-    return running(_color, WHITE);
+    return running(SEGMENT.colors[0], rgbcolor_white);
   }
 
   /*
   * Alternating red/blue pixels running.
   */
   uint16_t mode_running_red_blue(void) {
-    return running(RED, BLUE);
+    return running((RgbColor) HtmlColor(RED), (RgbColor) HtmlColor(BLUE));
   }
 
   /*
    * Alternating red/green pixels running.
    */
   uint16_t mode_merry_christmas(void) {
-    return running(RED, GREEN);
+    return running((RgbColor) HtmlColor(RED), (RgbColor) HtmlColor(GREEN));
   }
 
   /*
   * Alternating orange/purple pixels running.
   */
   uint16_t mode_halloween(void) {
-    return running(PURPLE, ORANGE);
+    return running((RgbColor) HtmlColor(PURPLE), (RgbColor) HtmlColor(ORANGE));
   }
 
   /*
    * Random colored pixels running.
    */
   uint16_t mode_running_random(void) {
-    for(uint16_t i=_maxled; i > 0; i--) {
-      if(_reverse) {
-        _strip.SetPixelColor(_maxled - i, _strip.GetPixelColor(_maxled - i + 1));
+    for(uint16_t i=SEGMENT_LENGTH-1; i > 0; i--) {
+      if(SEGMENT.reverse) {
+        this->setPixelColor(SEGMENT.stop - i, _strip.GetPixelColor(SEGMENT.stop - i + 1));
       } else {
-        _strip.SetPixelColor(0 + i, _strip.GetPixelColor(0 + i - 1));
+        this->setPixelColor(SEGMENT.start + i, _strip.GetPixelColor(SEGMENT.start + i - 1));
       }
     }
 
-    if(counter_mode_step == 0) {
-      aux_param = get_random_wheel_index(aux_param);
-      RgbColor color_tmp(HtmlColor(color_wheel(aux_param)));
-      if(_reverse) {
-        _strip.SetPixelColor(_maxled, color_tmp);
+    if(SEGMENT_RUNTIME.counter_mode_step == 0) {
+      SEGMENT_RUNTIME.aux_param = get_random_wheel_index(SEGMENT_RUNTIME.aux_param);
+      if(SEGMENT.reverse) {
+        this->setPixelColor(SEGMENT.stop, color_wheel(SEGMENT_RUNTIME.aux_param));
       } else {
-        _strip.SetPixelColor(0, color_tmp);
+        this->setPixelColor(SEGMENT.start, color_wheel(SEGMENT_RUNTIME.aux_param));
       }
     }
 
-    counter_mode_step = (counter_mode_step == 0) ? 1 : 0;
-    return (_speed / _maxled);
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step == 0) ? 1 : 0;
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
@@ -1454,24 +1391,22 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t mode_larson_scanner(void) {
     fade_out();
 
-    if(counter_mode_step <= _maxled) {
-      RgbColor color_tmp( HtmlColor((uint32_t) _color));
-      if(_reverse) {
-        _strip.SetPixelColor(_maxled - counter_mode_step, color_tmp);
+    if(SEGMENT_RUNTIME.counter_mode_step < SEGMENT_LENGTH) {
+      if(SEGMENT.reverse) {
+        this->setPixelColor(SEGMENT.stop - SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
       } else {
-        _strip.SetPixelColor(0 + counter_mode_step, color_tmp);
+        this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
       }
     } else {
-      RgbColor color_tmp( HtmlColor((uint32_t) _color));
-      if(_reverse) {
-        _strip.SetPixelColor(_maxled - ((_maxled * 2) - counter_mode_step) + 2, color_tmp);
+      if(SEGMENT.reverse) {
+        this->setPixelColor(SEGMENT.stop - ((SEGMENT_LENGTH * 2) - SEGMENT_RUNTIME.counter_mode_step) + 2, SEGMENT.colors[0]);
       } else {
-        _strip.SetPixelColor(0 + ((_maxled * 2) - counter_mode_step) - 2, color_tmp);
+        this->setPixelColor(SEGMENT.start + ((SEGMENT_LENGTH * 2) - SEGMENT_RUNTIME.counter_mode_step) - 2, SEGMENT.colors[0]);
       }
     }
 
-    counter_mode_step = (counter_mode_step + 1) % ((_maxled * 2) - 2);
-    return (_speed / (_maxled * 2));
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % ((SEGMENT_LENGTH * 2) - 2);
+    return (SEGMENT.speed / (SEGMENT_LENGTH * 2));
   }
 
   /*
@@ -1480,26 +1415,25 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t mode_comet(void) {
     fade_out();
 
-    RgbColor color_tmp( HtmlColor((uint32_t) _color));
-    if(_reverse) {
-      _strip.SetPixelColor((_maxled + 1) - counter_mode_step, color_tmp);
+    if(SEGMENT.reverse) {
+      this->setPixelColor(SEGMENT.stop - SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
     } else {
-      _strip.SetPixelColor(0 + counter_mode_step, color_tmp);
+      this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
     }
 
-    counter_mode_step = (counter_mode_step + 1) % (_maxled + 1);
-    return (_speed / (_maxled + 1));
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
   * Fireworks function.
   */
-  uint16_t fireworks(uint32_t color) {
+  uint16_t fireworks(RgbColor color) {
     fade_out();
 
     uint32_t prevLed, thisLed, nextLed;
 
-    for(uint16_t i=0 + 1; i <=_maxled; i++) {
+    for(uint16_t i=SEGMENT.start + 1; i <SEGMENT.stop; i++) {
       RgbColor rgbPrevLed = _strip.GetPixelColor(i-1);
 	  RgbColor rgbThisLed = _strip.GetPixelColor(i);
 	  RgbColor rgbNextLed = _strip.GetPixelColor(i+1);
@@ -1514,28 +1448,28 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       prevLed = (prevLedhex >> 2) & 0x3F3F3F;
       thisLed = thisLedhex;
       nextLed = (nextLedhex >> 2) & 0x3F3F3F;
-      _strip.SetPixelColor(i, HtmlColor((uint32_t) (prevLed + thisLed + nextLed)));
+      this->setPixelColor(i, (RgbColor) HtmlColor((uint32_t) (prevLed + thisLed + nextLed)));
     }
 
     if(!_triggered) {
-      for(uint16_t i=0; i<max(1, _maxled/20); i++) {
+      for(uint16_t i=0; i<max(1, SEGMENT_LENGTH/20); i++) {
         if(random(10) == 0) {
-          _strip.SetPixelColor(0 + random(_maxled), HtmlColor((uint32_t) color));
+		  this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
         }
       }
     } else {
-      for(uint16_t i=0; i<max(1, _maxled/10); i++) {
-        _strip.SetPixelColor(0 + random(_maxled), HtmlColor((uint32_t) color));
+      for(uint16_t i=0; i<max(1, SEGMENT_LENGTH/10); i++) {
+		this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
       }
     }
-    return (_speed / _maxled);
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
   * Firework sparks.
   */
   uint16_t mode_fireworks(void) {
-    uint32_t color = _color;
+    RgbColor color = SEGMENT.colors[0];
     return fireworks(color);
   }
 
@@ -1543,7 +1477,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Random colored firework sparks.
   */
   uint16_t mode_fireworks_random(void) {
-    uint32_t color = color_wheel(random(256));
+    RgbColor color = color_wheel(random(256));
     return fireworks(color);
   }
 
@@ -1551,18 +1485,12 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Fire flicker function
   */
   uint16_t fire_flicker(int rev_intensity) {
-    //byte w = (_color >> 24) & 0xFF;
-    byte r = (_color >> 16) & 0xFF;
-    byte g = (_color >>  8) & 0xFF;
-    byte b = (_color        & 0xFF);
-    byte lum = max(r, max(g, b)) / rev_intensity;
-    for(uint16_t i=0; i <= _maxled; i++) {
+    byte lum = max(SEGMENT.colors[0].R, max(SEGMENT.colors[0].G, SEGMENT.colors[0].B)) / rev_intensity;
+    for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
       int flicker = random(0, lum);
-	  //RgbwColor color_tmp(max(r - flicker, 0), max(g - flicker, 0), max(b - flicker, 0), max(w - flicker, 0));
-	  RgbColor color_tmp(max(r - flicker, 0), max(g - flicker, 0), max(b - flicker, 0));
-      _strip.SetPixelColor(i, color_tmp);
+      this->setPixelColor(i, max(SEGMENT.colors[0].R - flicker, 0), max(SEGMENT.colors[0].G - flicker, 0), max(SEGMENT.colors[0].B - flicker, 0));
     }
-    return (_speed / _maxled);
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
@@ -1589,83 +1517,81 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   /*
   * Tricolor chase function
   */
-  uint16_t tricolor_chase(uint32_t color1, uint32_t color2, uint32_t color3) {
-    for(uint16_t i=0; i <= _maxled; i++) {
-      if((i + counter_mode_step) % 6 < 2) {
-        if(_reverse) {
-          _strip.SetPixelColor(0 + i, HtmlColor((uint32_t) color1));
+  uint16_t tricolor_chase(RgbColor color1, RgbColor color2, RgbColor color3) {
+    for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
+      if((i + SEGMENT_RUNTIME.counter_mode_step) % 6 < 2) {
+        if(SEGMENT.reverse) {
+          this->setPixelColor(SEGMENT.start + i, color1);
         } else {
-          _strip.SetPixelColor(_maxled - i, HtmlColor((uint32_t) color1));
+          this->setPixelColor(SEGMENT.stop - i, color1);
         }
-      } else if((i + counter_mode_step) % 6 < 4) {
-        if(_reverse) {
-          _strip.SetPixelColor(0 + i, HtmlColor((uint32_t) color2));
+      } else if((i + SEGMENT_RUNTIME.counter_mode_step) % 6 < 4) {
+        if(SEGMENT.reverse) {
+          this->setPixelColor(SEGMENT.start + i, color2);
         } else {
-          _strip.SetPixelColor(_maxled - i, HtmlColor((uint32_t) color2));
+          this->setPixelColor(SEGMENT.stop - i, color2);
         }
       } else {
-        if(_reverse) {
-          _strip.SetPixelColor(0 + i, HtmlColor((uint32_t) color3));
+        if(SEGMENT.reverse) {
+          this->setPixelColor(SEGMENT.start + i, color3);
         } else {
-          _strip.SetPixelColor(_maxled - i, HtmlColor((uint32_t) color3));
+          this->setPixelColor(SEGMENT.stop - i, color3);
         }
       }
     }
 
-    counter_mode_step = (counter_mode_step + 1) % 6;
-    return (_speed / _maxled);
+    SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % 6;
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
   /*
   * Tricolor chase mode
   */
   uint16_t mode_tricolor_chase(void) {
-    return tricolor_chase(_color, color_wheel(random(256)), color_wheel(random(256)));
+    return tricolor_chase(SEGMENT.colors[0], SEGMENT.colors[1], SEGMENT.colors[2]);
   }
 
   /*
   * Alternating white/red/black pixels running.
   */
   uint16_t mode_circus_combustus(void) {
-    return tricolor_chase(RED, WHITE, BLACK);
+    return tricolor_chase((RgbColor) HtmlColor(RED), (RgbColor) HtmlColor(WHITE), (RgbColor) HtmlColor(BLACK));
   }
 
   /*
   * ICU mode
   */
-  uint16_t mode_icu() {
-    uint16_t dest = counter_mode_step & 0xFFFF;
+  uint16_t mode_icu(void) {
+    uint16_t dest = SEGMENT_RUNTIME.counter_mode_step & 0xFFFF;
  
-    RgbColor color_tmp(HtmlColor((uint32_t) _color));
-	RgbColor color_blk(HtmlColor(BLACK));
-    _strip.SetPixelColor(0 + dest, color_tmp);
-    _strip.SetPixelColor(0 + dest + _maxled/2, color_tmp);
+    this->setPixelColor(SEGMENT.start + dest, SEGMENT.colors[0]);
+    this->setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, SEGMENT.colors[0]);
 
-    if(aux_param == dest) { // pause between eye movements
+    if(SEGMENT_RUNTIME.aux_param == dest) { // pause between eye movements
       if(random(6) == 0) { // blink once in a while
-        _strip.SetPixelColor(0 + dest, color_blk);
-        _strip.SetPixelColor(0 + dest + _maxled/2, color_blk);
+        this->setPixelColor(SEGMENT.start + dest, rgbcolor_black);
+        this->setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, rgbcolor_black);
         return 200;
       }
-      aux_param = random(_maxled/2);
+      SEGMENT_RUNTIME.aux_param = random(SEGMENT_LENGTH/2);
       return 1000 + random(2000);
     }
 
-    _strip.SetPixelColor(0 + dest, color_blk);
-    _strip.SetPixelColor(0 + dest + _maxled/2, color_blk);
+    this->setPixelColor(SEGMENT.start + dest, rgbcolor_black);
+    this->setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, rgbcolor_black);
 
-    if(aux_param > counter_mode_step) {
-      counter_mode_step++;
+    if(SEGMENT_RUNTIME.aux_param > SEGMENT_RUNTIME.counter_mode_step) {
+      SEGMENT_RUNTIME.counter_mode_step++;
       dest++;
-    } else if (aux_param < counter_mode_step) {
-      counter_mode_step--;
+    } else if (SEGMENT_RUNTIME.aux_param < SEGMENT_RUNTIME.counter_mode_step) {
+      SEGMENT_RUNTIME.counter_mode_step--;
       dest--;
     }
 
-    _strip.SetPixelColor(0 + dest, color_tmp);
-    _strip.SetPixelColor(0 + dest + _maxled/2, color_tmp);
+    this->setPixelColor(SEGMENT.start + dest, SEGMENT.colors[0]);
+    this->setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, SEGMENT.colors[0]);
 
-    return (_speed / _maxled);
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
   
   /*
@@ -1681,62 +1607,38 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   }
   
   /*
-  * Fades all pixel to Black (percentage rgb)
-  */
-  void fadeToBlack(uint16_t ledNo, byte fadeValue) {
-    RgbColor oldColor = _strip.GetPixelColor(ledNo);
-    uint8_t r = (oldColor.R <= 10)? 0 : (uint8_t) oldColor.R - (oldColor.R * fadeValue / 256);
-    uint8_t g = (oldColor.G <= 10)? 0 : (uint8_t) oldColor.G - (oldColor.G * fadeValue / 256);
-    uint8_t b = (oldColor.B <= 10)? 0 : (uint8_t) oldColor.B - (oldColor.B * fadeValue / 256);
-	RgbColor newColor(r, g, b);    
-    _strip.SetPixelColor(ledNo, newColor);
-  }
-
-  /*
-  * Fades all pixel to Black (use absolute value)
-  */
-  void fadeToBlackVal(uint16_t ledNo, uint8_t fadeValue) {
-    RgbColor color_tmp = _strip.GetPixelColor(ledNo);
-	if(fadeValue < 10) fadeValue = 0; 
-	color_tmp.Darken(fadeValue);
-    _strip.SetPixelColor(ledNo, color_tmp);
-  }
-  
-  /*
   * Meteor Rain
   * https://www.tweaking4all.com/hardware/arduino/adruino-led-strip-effects/#LEDStripEffectMeteorRain
   */
   
   uint16_t meteorRain(uint8_t meteorTrailDecay, boolean meteorRandomDecay) {  
-    RgbColor color_tmp(HtmlColor((uint32_t) _color));
-    uint16_t meteorSize = _maxled * 0.15;
+    uint16_t meteorSize = SEGMENT_LENGTH * 0.15;
 	
-	if(counter_mode_step == 0){
-      RgbColor color_blk(HtmlColor(BLACK));
-      _strip.ClearTo(color_blk);
+	if(SEGMENT_RUNTIME.counter_mode_step == 0){
+      _strip.ClearTo(rgbcolor_black);
 	}
   
-    if( counter_mode_step <= _maxled*2 ) {
+    if( SEGMENT_RUNTIME.counter_mode_step <= SEGMENT_LENGTH*2 ) {
       // fade brightness all LEDs one step
-      for(uint16_t j=0; j <= _maxled; j++) {
+      for(uint16_t j=0; j <= SEGMENT_LENGTH; j++) {
         if( (!meteorRandomDecay) || (random(10)>5) ) {
           fadeToBlackVal(j, meteorTrailDecay );        
         }
       }
       // draw meteor
-      for(uint16_t j = 0; j < meteorSize; j++) {
-        if( ( (counter_mode_step)-j <= _maxled) && ((counter_mode_step)-j >= 0) ) {
-          if(!_reverse){
-            _strip.SetPixelColor((counter_mode_step)-j, color_tmp);
+      for(uint16_t j = 0; j <= meteorSize; j++) {
+        if( ( (SEGMENT_RUNTIME.counter_mode_step)-j <= SEGMENT_LENGTH) && ((SEGMENT_RUNTIME.counter_mode_step)-j >= 0) ) {
+          if(!SEGMENT.reverse){
+            _strip.SetPixelColor(SEGMENT_RUNTIME.counter_mode_step - j, SEGMENT.colors[0]);
 		  } else {
-		    _strip.SetPixelColor(_maxled - counter_mode_step + j, color_tmp);
+		    _strip.SetPixelColor(SEGMENT_LENGTH - SEGMENT_RUNTIME.counter_mode_step + j, SEGMENT.colors[0]);
           }
         } 
       }
     } 
 
-    counter_mode_step = (counter_mode_step + 1) % (2*(_maxled + 1));
-    return (_speed / (2*(_maxled + 1)));
+	SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
+    return (SEGMENT.speed / SEGMENT_LENGTH);
   }
   
   uint16_t mode_meteor_rain(void) {
