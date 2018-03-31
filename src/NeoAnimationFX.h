@@ -1629,7 +1629,9 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       for(uint16_t i = 0; i <= meteorSize; i++) {
         if( ( (SEGMENT_RUNTIME.counter_mode_step)-i <= SEGMENT_LENGTH) && ((SEGMENT_RUNTIME.counter_mode_step)-i >= 0) ) {
           if(!SEGMENT.reverse){
+            this->setPixelColor(SEGMENT_RUNTIME.counter_mode_step - i, SEGMENT.colors[0]);
 		  } else {
+		    this->setPixelColor(SEGMENT_LENGTH - SEGMENT_RUNTIME.counter_mode_step + i, SEGMENT.colors[0]);
           }
         } 
       }
