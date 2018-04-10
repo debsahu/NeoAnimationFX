@@ -119,6 +119,26 @@ typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoEsp8266BitBang800KbpsMethod>   
 typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoEsp8266BitBang400KbpsMethod>   NeoPBBRGBBB400;
 typedef  NeoPixelBrightnessBus<NeoRgbFeature, NeoWs2813Method>                  NeoPBBRGBws2813;
 
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, Neo800KbpsMethod>                 NeoPBBBRG800;
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, Neo400KbpsMethod>                 NeoPBBBRG400;
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, NeoEsp8266Uart800KbpsMethod>      NeoPBBBRGU800;
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, NeoEsp8266Uart400KbpsMethod>      NeoPBBBRGU400;
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, NeoEsp8266Dma800KbpsMethod>       NeoPBBBRGD800;
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, NeoEsp8266Dma400KbpsMethod>       NeoPBBBRGD400;
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, NeoEsp8266BitBang800KbpsMethod>   NeoPBBBRGBB800;
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, NeoEsp8266BitBang400KbpsMethod>   NeoPBBBRGBB400;
+typedef  NeoPixelBrightnessBus<NeoBrgFeature, NeoWs2813Method>                  NeoPBBBRGws2813;
+
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, Neo800KbpsMethod>                 NeoPBBRBG800;
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, Neo400KbpsMethod>                 NeoPBBRBG400;
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoEsp8266Uart800KbpsMethod>      NeoPBBRBGU800;
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoEsp8266Uart400KbpsMethod>      NeoPBBRBGU400;
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoEsp8266Dma800KbpsMethod>       NeoPBBRBGD800;
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoEsp8266Dma400KbpsMethod>       NeoPBBRBGD400;
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoEsp8266BitBang800KbpsMethod>   NeoPBBRBGBB800;
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoEsp8266BitBang400KbpsMethod>   NeoPBBRBGBB400;
+typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoWs2813Method>                  NeoPBBRBGws2813;
+
 //typedef  NeoPixelBrightnessBus <NeoRgbwFeature, Neo800KbpsMethod>               NeoPBBRGBW800; // Not supported yet
   
 template<typename T_PIXEL_METHOD> class NeoAnimationFX {
