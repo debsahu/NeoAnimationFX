@@ -3,16 +3,16 @@
 
 #include <NeoPixelBrightnessBus.h>
 
-#define DEFAULT_BRIGHTNESS 50
-#define DEFAULT_MODE 0
-#define DEFAULT_SPEED 1000
-#define DEFAULT_COLOR 0xFF0000
+#define DEFAULT_BRIGHTNESS (uint8_t)50
+#define DEFAULT_MODE (uint8_t)0
+#define DEFAULT_SPEED (uint16_t)1000
+#define DEFAULT_COLOR (uint32_t)0xFF0000
 
-#define SPEED_MIN 10
-#define SPEED_MAX 65535
+#define SPEED_MIN (uint16_t)10
+#define SPEED_MAX (uint16_t)65535
 
-#define BRIGHTNESS_MIN 0
-#define BRIGHTNESS_MAX 255
+#define BRIGHTNESS_MIN (uint8_t)0
+#define BRIGHTNESS_MAX (uint8_t)255
 
 /* each segment uses 34 bytes of SRAM memory, so if you're application fails because of
   insufficient memory, decreasing MAX_NUM_SEGMENTS may help */
@@ -97,6 +97,20 @@
 #define FX_MODE_CUSTOM                  56
 #define FX_MODE_METEOR_RAIN             57
 
+#define NO_OPTIONS   (uint8_t)0x00
+#define REVERSE      (uint8_t)0x80
+#define IS_REVERSE   ((SEGMENT.options & REVERSE) == REVERSE)
+#define FADE_XFAST   (uint8_t)0x10
+#define FADE_FAST    (uint8_t)0x20
+#define FADE_MEDIUM  (uint8_t)0x30
+#define FADE_SLOW    (uint8_t)0x40
+#define FADE_XSLOW   (uint8_t)0x50
+#define FADE_XXSLOW  (uint8_t)0x60
+#define FADE_GLACIAL (uint8_t)0x70
+#define FADE_RATE    ((SEGMENT.options & 0x70) >> 4)
+#define GAMMA        (uint8_t)0x08
+#define IS_GAMMA     ((SEGMENT.options & GAMMA) == GAMMA)
+
 #define MAX_PIXEL_CT 3000
 
 typedef  NeoPixelBrightnessBus<NeoGrbFeature, Neo800KbpsMethod>                 NeoPBBGRB800;   // Use this for WS2812
@@ -141,6 +155,8 @@ typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoWs2813Method>                  
 
 //typedef  NeoPixelBrightnessBus <NeoRgbwFeature, Neo800KbpsMethod>               NeoPBBRGBW800; // Not supported yet
   
+NeoGamma<NeoGammaTableMethod> colorGamma;
+  
 template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   typedef uint16_t (NeoAnimationFX::*mode_ptr)(void);
   
@@ -166,7 +182,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     uint16_t speed;
     uint16_t start;
     uint16_t stop;
-    bool     reverse;
+    uint8_t  options;
 	// set default values c++ way
 	Segment(): 
 	  mode(FX_MODE_STATIC), 
@@ -174,7 +190,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
 	  speed(DEFAULT_SPEED), 
 	  start(0), 
 	  stop(7), 
-	  reverse(false) {}
+	  options(NO_OPTIONS) {}
   } segment;
     
   // segment runtime parameters
@@ -339,7 +355,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
         if(now > SEGMENT_RUNTIME.next_time || _triggered) {
           doShow = true;
           uint16_t delay = (this->*_mode[SEGMENT.mode])();
-          SEGMENT_RUNTIME.next_time = now + max((int)delay, SPEED_MIN);
+          SEGMENT_RUNTIME.next_time = now + max(delay, SPEED_MIN);
           SEGMENT_RUNTIME.counter_mode_call++;
         }
       }
@@ -427,7 +443,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     s = _segments[0].stop - _segments[0].start + 1 - s;
 
     for(uint16_t i=_segments[0].start + s; i <= (_segments[0].stop - _segments[0].start + 1); i++) {
-      this->setPixelColor(i, (RgbColor) HtmlColor(BLACK));
+      setPixelColor(i, (RgbColor) HtmlColor(BLACK));
     }
     _strip.Show();
 
@@ -451,13 +467,27 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   void setColor(uint8_t r, uint8_t g, uint8_t b) {
 	setColor(((uint32_t)r << 16) | ((uint32_t)g <<  8) | b);
   }
+
+  void setPixelColor(uint16_t pixel, uint32_t c) {
+    RgbColor color_tmp = (RgbColor) HtmlColor((uint32_t) c);
+    if(IS_GAMMA) {
+      color_tmp = colorGamma.Correct(color_tmp);
+    }
+	_strip.SetPixelColor(pixel, color_tmp);
+  }
   
   void setPixelColor(uint16_t pixel, uint8_t r, uint8_t g, uint8_t b) {
     RgbColor color_tmp(r, g, b);
+    if(IS_GAMMA) {
+      color_tmp = colorGamma.Correct(color_tmp);
+    }
 	_strip.SetPixelColor(pixel, color_tmp);
   }
   
   void setPixelColor(uint16_t pixel, RgbColor pixel_rgb_color) {
+    if(IS_GAMMA) {
+      pixel_rgb_color = colorGamma.Correct(pixel_rgb_color);
+    }
 	_strip.SetPixelColor(pixel, pixel_rgb_color);
   }
   
@@ -518,25 +548,23 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   }
 
   void setSegment(uint8_t n, uint16_t start, uint16_t stop, uint8_t mode, uint32_t color, uint16_t speed, bool reverse) {
-    if(n < (sizeof(_segments) / sizeof(_segments[0]))) {
-      if(n + 1 > _num_segments) _num_segments = n + 1;
-      _segments[n].start = start;
-      _segments[n].stop = stop;
-      _segments[n].mode = mode;
-      _segments[n].speed = speed;
-      _segments[n].reverse = reverse;
-	  _segments[n].colors[0] = (RgbColor) HtmlColor(color);
-    }
+	uint32_t colors[] = {color, 0, 0};
+    setSegment(n, start, stop, mode, colors, speed, reverse);
   }
 
   void setSegment(uint8_t n, uint16_t start, uint16_t stop, uint8_t mode, const uint32_t colors[], uint16_t speed, bool reverse) {
+    setSegment(n, start, stop, mode, colors, speed, (uint8_t)(reverse ? REVERSE : NO_OPTIONS));
+  }
+
+  void setSegment(uint8_t n, uint16_t start, uint16_t stop, uint8_t mode, const uint32_t colors[], uint16_t speed, uint8_t options) {
+   
     if(n < (sizeof(_segments) / sizeof(_segments[0]))) {
       if(n + 1 > _num_segments) _num_segments = n + 1;
       _segments[n].start = start;
       _segments[n].stop = stop;
       _segments[n].mode = mode;
       _segments[n].speed = speed;
-      _segments[n].reverse = reverse;
+      _segments[n].options = options;
 
       for(uint8_t i=0; i<NUM_COLORS; i++) {
 		_segments[n].colors[i] = (RgbColor) HtmlColor(colors[i]);
@@ -549,7 +577,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     memset(_segment_runtimes, 0, sizeof(_segment_runtimes));
     _segment_index = 0;
     _num_segments = 1;
-    setSegment(0, 0, 7, FX_MODE_STATIC, DEFAULT_COLOR, DEFAULT_SPEED, false);
+    setSegment(0, 0, 7, FX_MODE_STATIC, (const uint32_t[]){DEFAULT_COLOR, 0, 0}, DEFAULT_SPEED, NO_OPTIONS);
   }
   
   /*
@@ -633,7 +661,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     uint8_t g = (oldColor.G <= 10)? 0 : (uint8_t) oldColor.G - (oldColor.G * fadeValue / 256);
     uint8_t b = (oldColor.B <= 10)? 0 : (uint8_t) oldColor.B - (oldColor.B * fadeValue / 256);
 	RgbColor newColor(r, g, b);    
-    _strip.SetPixelColor(ledNo, newColor);
+    setPixelColor(ledNo, newColor);
   }
 
   /*
@@ -643,7 +671,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     RgbColor color_tmp = _strip.GetPixelColor(ledNo);
 	if(fadeValue < 10) fadeValue = 0; 
 	color_tmp.Lighten(fadeValue);
-    _strip.SetPixelColor(ledNo, color_tmp);
+    setPixelColor(ledNo, color_tmp);
   }
 
   /*
@@ -655,7 +683,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     uint8_t g = (oldColor.G <= 10)? 0 : (uint8_t) oldColor.G + (oldColor.G * fadeValue / 256);
     uint8_t b = (oldColor.B <= 10)? 0 : (uint8_t) oldColor.B + (oldColor.B * fadeValue / 256);
 	RgbColor newColor(r, g, b);    
-    _strip.SetPixelColor(ledNo, newColor);
+    setPixelColor(ledNo, newColor);
   }
 
   /*
@@ -665,7 +693,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     RgbColor color_tmp = _strip.GetPixelColor(ledNo);
 	if(fadeValue < 10) fadeValue = 0; 
 	color_tmp.Darken(fadeValue);
-    _strip.SetPixelColor(ledNo, color_tmp);
+    setPixelColor(ledNo, color_tmp);
   }
   
   /*
@@ -673,7 +701,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   */
   uint16_t mode_static(void) {	
 	for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, SEGMENT.colors[0]);
+      setPixelColor(i, SEGMENT.colors[0]);
     }
     return 500;
   }
@@ -685,10 +713,10 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   */
   uint16_t blink(RgbColor color1, RgbColor color2, bool strobe) {
     RgbColor color = ((SEGMENT_RUNTIME.counter_mode_call & 1) == 0) ? color1 : color2;
-    if(SEGMENT.reverse) color = (color == color1) ? color2 : color1;
+    if(IS_REVERSE) color = (color == color1) ? color2 : color1;
 
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, color);
+      setPixelColor(i, color);
     }
 
     if((SEGMENT_RUNTIME.counter_mode_call & 1) == 0) {
@@ -733,11 +761,16 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
 
     int lum = map(breath_brightness, 0, 255, 0, _brightness);  // keep luminosity below brightness set by user
     //uint8_t w = (SEGMENT.colors[0].W) * lum / _brightness; // modify RGBW colors with brightness info
-    uint8_t r = (SEGMENT.colors[0].R) * lum / _brightness;
-    uint8_t g = (SEGMENT.colors[0].G) * lum / _brightness;
-    uint8_t b = (SEGMENT.colors[0].B) * lum / _brightness;
+	uint8_t r, g, b;
+	if(_brightness) {
+      r = (SEGMENT.colors[0].R) * lum / _brightness;
+      g = (SEGMENT.colors[0].G) * lum / _brightness;
+      b = (SEGMENT.colors[0].B) * lum / _brightness;
+	} else {
+      r = 0; g = 0; b = 0;
+	}
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, r, g, b);
+      setPixelColor(i, r, g, b);
     }
 
     SEGMENT_RUNTIME.aux_param = breath_brightness;
@@ -747,17 +780,17 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t color_wipe(RgbColor color1, RgbColor color2, bool rev) {
     if(SEGMENT_RUNTIME.counter_mode_step < SEGMENT_LENGTH) {
       uint32_t led_offset = SEGMENT_RUNTIME.counter_mode_step;
-      if(SEGMENT.reverse) {
-        this->setPixelColor(SEGMENT.stop - led_offset, color1);
+      if(IS_REVERSE) {
+        setPixelColor(SEGMENT.stop - led_offset, color1);
       } else {
-        this->setPixelColor(SEGMENT.start + led_offset, color1);
+        setPixelColor(SEGMENT.start + led_offset, color1);
       }
     } else {
       uint32_t led_offset = SEGMENT_RUNTIME.counter_mode_step - SEGMENT_LENGTH;
-      if((SEGMENT.reverse && !rev) || (!SEGMENT.reverse && rev)) {
-        this->setPixelColor(SEGMENT.stop - led_offset, color2);
+      if((IS_REVERSE && !rev) || (!IS_REVERSE && rev)) {
+        setPixelColor(SEGMENT.stop - led_offset, color2);
       } else {
-        this->setPixelColor(SEGMENT.start + led_offset, color2);
+        setPixelColor(SEGMENT.start + led_offset, color2);
       }
     }
 
@@ -805,7 +838,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     RgbColor color = color_wheel(SEGMENT_RUNTIME.aux_param);
 
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, color);
+      setPixelColor(i, color);
     }
     return (SEGMENT.speed);
   }
@@ -817,11 +850,11 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t mode_single_dynamic(void) {
     if(SEGMENT_RUNTIME.counter_mode_call == 0) {
       for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-        this->setPixelColor(i, color_wheel(random(256)));
+        setPixelColor(i, color_wheel(random(256)));
       }
     }
 
-    this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color_wheel(random(256)));
+    setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color_wheel(random(256)));
     return (SEGMENT.speed);
   }
 
@@ -831,7 +864,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
    */
   uint16_t mode_multi_dynamic(void) {
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, color_wheel(random(256)));
+      setPixelColor(i, color_wheel(random(256)));
     }
     return (SEGMENT.speed);
   }
@@ -842,7 +875,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t mode_rainbow(void) {
     RgbColor color = color_wheel(SEGMENT_RUNTIME.counter_mode_step);
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, color);
+      setPixelColor(i, color);
     }
 
     SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) & 0xFF;
@@ -855,7 +888,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t mode_rainbow_cycle(void) {
     for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
 	    RgbColor color = color_wheel(((i * 256 / SEGMENT_LENGTH) + SEGMENT_RUNTIME.counter_mode_step) & 0xFF);
-      this->setPixelColor(SEGMENT.start + i, color);
+      setPixelColor(SEGMENT.start + i, color);
     }
 
     SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) & 0xFF;
@@ -871,16 +904,16 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     }
 	
 	for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, rgbcolor_black);
+      setPixelColor(i, rgbcolor_black);
     }
 
     int led_offset = SEGMENT_RUNTIME.counter_mode_step - (SEGMENT_LENGTH - 1);
     led_offset = abs(led_offset); 
 
-    if(SEGMENT.reverse) {
-      this->setPixelColor(SEGMENT.stop - led_offset, SEGMENT.colors[0]);
+    if(IS_REVERSE) {
+      setPixelColor(SEGMENT.stop - led_offset, SEGMENT.colors[0]);
     } else {
-      this->setPixelColor(SEGMENT.start + led_offset, SEGMENT.colors[0]);
+      setPixelColor(SEGMENT.start + led_offset, SEGMENT.colors[0]);
     }
 
     SEGMENT_RUNTIME.counter_mode_step++;
@@ -896,14 +929,14 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     }
 
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, BLACK);
+      setPixelColor(i, BLACK);
     }
 
     int led_offset = SEGMENT_RUNTIME.counter_mode_step - (SEGMENT_LENGTH - 1);
     led_offset = abs(led_offset);
 
-    this->setPixelColor(SEGMENT.start + led_offset, SEGMENT.colors[0]);
-    this->setPixelColor(SEGMENT.start + SEGMENT_LENGTH - led_offset - 1, SEGMENT.colors[0]);
+    setPixelColor(SEGMENT.start + led_offset, SEGMENT.colors[0]);
+    setPixelColor(SEGMENT.start + SEGMENT_LENGTH - led_offset - 1, SEGMENT.colors[0]);
 
     SEGMENT_RUNTIME.counter_mode_step++;
     return (SEGMENT.speed / (SEGMENT_LENGTH * 2));
@@ -917,12 +950,18 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     lum = 63 - (abs(lum) * 2);
     lum = map(lum, 0, 64, min(25, (int)_brightness), _brightness);
 
-    //uint8_t w = (SEGMENT.colors[0] >> 24 & 0xFF) * lum / _brightness; // modify RGBW colors with brightness info
-    uint8_t r = (SEGMENT.colors[0].R) * lum / _brightness;
-    uint8_t g = (SEGMENT.colors[0].G) * lum / _brightness;
-    uint8_t b = (SEGMENT.colors[0].B) * lum / _brightness;
+	uint8_t r, g, b;
+	if(_brightness){
+      //uint8_t w = (SEGMENT.colors[0] >> 24 & 0xFF) * lum / _brightness; // modify RGBW colors with brightness info
+      r = (SEGMENT.colors[0].R) * lum / _brightness;
+      g = (SEGMENT.colors[0].G) * lum / _brightness;
+      b = (SEGMENT.colors[0].B) * lum / _brightness;
+	} else {
+	  r = 0; g = 0; b = 0;
+	}
+	
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, r, g, b);
+      setPixelColor(i, r, g, b);
     }
 
     SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % 64;
@@ -936,16 +975,16 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     SEGMENT_RUNTIME.counter_mode_call = SEGMENT_RUNTIME.counter_mode_call % 3;
     for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
       if((i % 3) == SEGMENT_RUNTIME.counter_mode_call) {
-        if(SEGMENT.reverse) {
-          this->setPixelColor(SEGMENT.stop - i, color1);
+        if(IS_REVERSE) {
+          setPixelColor(SEGMENT.stop - i, color1);
         } else {
-          this->setPixelColor(SEGMENT.start + i, color1);
+          setPixelColor(SEGMENT.start + i, color1);
         }
       } else {
-        if(SEGMENT.reverse) {
-          this->setPixelColor(SEGMENT.stop - i, color2);
+        if(IS_REVERSE) {
+          setPixelColor(SEGMENT.stop - i, color2);
         } else {
-          this->setPixelColor(SEGMENT.start + i, color2);
+          setPixelColor(SEGMENT.start + i, color2);
         }
       }
     }
@@ -977,10 +1016,10 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     float radPerLed = (2.0 * 3.14159) / SEGMENT_LENGTH;
     for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
       int lum = map((int)(sin((i + SEGMENT_RUNTIME.counter_mode_step) * radPerLed) * 128), -128, 128, 0, 255);
-      if(SEGMENT.reverse) {
-        this->setPixelColor(SEGMENT.start + i, (SEGMENT.colors[0].R * lum) / 256, (SEGMENT.colors[0].G * lum) / 256, (SEGMENT.colors[0].B * lum) / 256);
+      if(IS_REVERSE) {
+        setPixelColor(SEGMENT.start + i, (SEGMENT.colors[0].R * lum) / 256, (SEGMENT.colors[0].G * lum) / 256, (SEGMENT.colors[0].B * lum) / 256);
       } else {
-        this->setPixelColor(SEGMENT.stop - i, (SEGMENT.colors[0].R * lum) / 256, (SEGMENT.colors[0].G * lum) / 256, (SEGMENT.colors[0].B * lum) / 256);
+        setPixelColor(SEGMENT.stop - i, (SEGMENT.colors[0].R * lum) / 256, (SEGMENT.colors[0].G * lum) / 256, (SEGMENT.colors[0].B * lum) / 256);
       }
     }
     SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
@@ -993,14 +1032,14 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t twinkle(RgbColor color) {
     if(SEGMENT_RUNTIME.counter_mode_step == 0) {
       for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-        this->setPixelColor(i, BLACK);
+        setPixelColor(i, BLACK);
       }
       uint16_t min_leds = max(1, SEGMENT_LENGTH / 5); // make sure, at least one LED is on
       uint16_t max_leds = max(1, SEGMENT_LENGTH / 2); // make sure, at least one LED is on
       SEGMENT_RUNTIME.counter_mode_step = random(min_leds, max_leds);
     }
 
-    this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
+    setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
 
     SEGMENT_RUNTIME.counter_mode_step--;
     return (SEGMENT.speed / SEGMENT_LENGTH);
@@ -1027,10 +1066,29 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * fades out the current segment by dividing each pixel's intensity by 2
   */
   void fade_out() {
+    static const float rateMap[] = {0.0, 1.20, 1.5, 2.0, 4.0, 8.0, 16.0, 64.0};
+    uint8_t rate = FADE_RATE;
+    float mappedRate = rateMap[rate];
+	RgbColor rgbcolor_target = SEGMENT.colors[1];
+   
 	for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      RgbColor rgbcolortmp = _strip.GetPixelColor(i);
-	  RgbColor color_tmp((uint8_t)(rgbcolortmp.R/2), (uint8_t)(rgbcolortmp.G/2), (uint8_t)(rgbcolortmp.B/2) );
-      _strip.SetPixelColor(i, color_tmp);
+	  RgbColor rgbcolortmp = _strip.GetPixelColor(i);
+      if(rate == 0) { // old fade-to-black algorithm
+	    RgbColor color_tmp((uint8_t)(rgbcolortmp.R/2), (uint8_t)(rgbcolortmp.G/2), (uint8_t)(rgbcolortmp.B/2) );
+        setPixelColor(i, color_tmp);
+	  } else {
+        uint8_t rdelta = (rgbcolor_target.R - rgbcolortmp.R) / mappedRate;
+        uint8_t gdelta = (rgbcolor_target.G - rgbcolortmp.G) / mappedRate;
+        uint8_t bdelta = (rgbcolor_target.B - rgbcolortmp.B) / mappedRate;
+		
+		// if fade isn't complete, make sure delta is at least 1 (fixes rounding issues)
+        rdelta += (rgbcolor_target.R == rgbcolortmp.R) ? 0 : (rgbcolor_target.R > rgbcolortmp.R) ? 1 : -1;
+        gdelta += (rgbcolor_target.G == rgbcolortmp.G) ? 0 : (rgbcolor_target.G > rgbcolortmp.G) ? 1 : -1;
+        bdelta += (rgbcolor_target.B == rgbcolortmp.B) ? 0 : (rgbcolor_target.B > rgbcolortmp.B) ? 1 : -1;
+		
+		RgbColor color_tmp((uint8_t)(rgbcolortmp.R + rdelta), (uint8_t)(rgbcolortmp.G + gdelta), (uint8_t)(rgbcolortmp.B + bdelta) );
+		setPixelColor(i, color_tmp);
+	  }
     }
   }
 
@@ -1041,7 +1099,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     fade_out();
 
     if(random(3) == 0) {
-      this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
+      setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
     }
     return (SEGMENT.speed / 8);
   }
@@ -1066,9 +1124,9 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   * Inspired by www.tweaking4all.com/hardware/arduino/adruino-led-strip-effects/
   */
   uint16_t mode_sparkle(void) {
-    this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, rgbcolor_black);
+    setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, rgbcolor_black);
     SEGMENT_RUNTIME.aux_param = random(SEGMENT_LENGTH); // aux_param stores the random led index
-    this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, SEGMENT.colors[0]);
+    setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, SEGMENT.colors[0]);
     return (SEGMENT.speed / SEGMENT_LENGTH);
   }
 
@@ -1079,15 +1137,15 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t mode_flash_sparkle(void) {
     if(SEGMENT_RUNTIME.counter_mode_call == 0) {
       for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-        this->setPixelColor(i, SEGMENT.colors[0]);
+        setPixelColor(i, SEGMENT.colors[0]);
       }
     }
 
-    this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, SEGMENT.colors[0]);
+    setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, SEGMENT.colors[0]);
 
     if(random(5) == 0) {
       SEGMENT_RUNTIME.aux_param = random(SEGMENT_LENGTH); // aux_param stores the random led index
-      this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, rgbcolor_white);
+      setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.aux_param, rgbcolor_white);
       return 20;
     } 
     return SEGMENT.speed;
@@ -1099,12 +1157,12 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   */
   uint16_t mode_hyper_sparkle(void) {
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, SEGMENT.colors[0]);
+      setPixelColor(i, SEGMENT.colors[0]);
     }
 
     if(random(5) < 2) {
       for(uint16_t i=0; i < max(1, SEGMENT_LENGTH/3); i++) {
-        this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), rgbcolor_white);
+        setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), rgbcolor_white);
       }
       return 20;
     }
@@ -1130,14 +1188,14 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   */
   uint16_t mode_multi_strobe(void) {
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, rgbcolor_black);
+      setPixelColor(i, rgbcolor_black);
     }
 
     uint16_t delay = SEGMENT.speed / (2 * ((SEGMENT.speed / 10) + 1));
     if(SEGMENT_RUNTIME.counter_mode_step < (2 * ((SEGMENT.speed / 10) + 1))) {
       if((SEGMENT_RUNTIME.counter_mode_step & 1) == 0) {
         for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-          this->setPixelColor(i, SEGMENT.colors[0]);
+          setPixelColor(i, SEGMENT.colors[0]);
         }
         delay = 20;
       } else {
@@ -1164,14 +1222,14 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     uint16_t a = SEGMENT_RUNTIME.counter_mode_step;
     uint16_t b = (a + 1) % SEGMENT_LENGTH;
     uint16_t c = (b + 1) % SEGMENT_LENGTH;
-    if(SEGMENT.reverse) {
-      this->setPixelColor(SEGMENT.stop - a, color1);
-      this->setPixelColor(SEGMENT.stop - b, color2);
-      this->setPixelColor(SEGMENT.stop - c, color3);
+    if(IS_REVERSE) {
+      setPixelColor(SEGMENT.stop - a, color1);
+      setPixelColor(SEGMENT.stop - b, color2);
+      setPixelColor(SEGMENT.stop - c, color3);
     } else {
-      this->setPixelColor(SEGMENT.start + a, color1);
-      this->setPixelColor(SEGMENT.start + b, color2);
-      this->setPixelColor(SEGMENT.start + c, color3);
+      setPixelColor(SEGMENT.start + a, color1);
+      setPixelColor(SEGMENT.start + b, color2);
+      setPixelColor(SEGMENT.start + c, color3);
     }
 
     SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
@@ -1258,7 +1316,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     uint8_t flash_step = SEGMENT_RUNTIME.counter_mode_call % ((flash_count * 2) + 1);
 
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
-      this->setPixelColor(i, SEGMENT.colors[0]);
+      setPixelColor(i, SEGMENT.colors[0]);
     }
 
     uint16_t delay = (SEGMENT.speed / SEGMENT_LENGTH);
@@ -1266,12 +1324,12 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       if(flash_step % 2 == 0) {
         uint16_t n = SEGMENT_RUNTIME.counter_mode_step;
         uint16_t m = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
-        if(SEGMENT.reverse) {
-          this->setPixelColor(SEGMENT.stop - n, rgbcolor_white);
-          this->setPixelColor(SEGMENT.stop - m, rgbcolor_white);
+        if(IS_REVERSE) {
+          setPixelColor(SEGMENT.stop - n, rgbcolor_white);
+          setPixelColor(SEGMENT.stop - m, rgbcolor_white);
         } else {
-          this->setPixelColor(SEGMENT.start + n, rgbcolor_white);
-          this->setPixelColor(SEGMENT.start + m, rgbcolor_white);
+          setPixelColor(SEGMENT.start + n, rgbcolor_white);
+          setPixelColor(SEGMENT.start + m, rgbcolor_white);
         }
         delay = 20;
       } else {
@@ -1291,7 +1349,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       uint8_t flash_step = SEGMENT_RUNTIME.counter_mode_call % ((flash_count * 2) + 1);
 
     for(uint16_t i=0; i < SEGMENT_RUNTIME.counter_mode_step; i++) {
-      this->setPixelColor(SEGMENT.start + i, color_wheel(SEGMENT_RUNTIME.aux_param));
+      setPixelColor(SEGMENT.start + i, color_wheel(SEGMENT_RUNTIME.aux_param));
     }
 
     uint16_t delay = (SEGMENT.speed / SEGMENT_LENGTH);
@@ -1299,12 +1357,12 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       uint16_t n = SEGMENT_RUNTIME.counter_mode_step;
       uint16_t m = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
       if(flash_step % 2 == 0) {
-        this->setPixelColor(SEGMENT.start + n, rgbcolor_white);
-        this->setPixelColor(SEGMENT.start + m, rgbcolor_white);
+        setPixelColor(SEGMENT.start + n, rgbcolor_white);
+        setPixelColor(SEGMENT.start + m, rgbcolor_white);
         delay = 20;
       } else {
-        this->setPixelColor(SEGMENT.start + n, color_wheel(SEGMENT_RUNTIME.aux_param));
-        this->setPixelColor(SEGMENT.start + m, rgbcolor_black);
+        setPixelColor(SEGMENT.start + n, color_wheel(SEGMENT_RUNTIME.aux_param));
+        setPixelColor(SEGMENT.start + m, rgbcolor_black);
         delay = 30;
       }
     } else {
@@ -1334,16 +1392,16 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t running(RgbColor color1, RgbColor color2) {
     for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
       if((i + SEGMENT_RUNTIME.counter_mode_step) % 4 < 2) {
-        if(SEGMENT.reverse) {
-          this->setPixelColor(SEGMENT.start + i, color1);
+        if(IS_REVERSE) {
+          setPixelColor(SEGMENT.start + i, color1);
         } else {
-          this->setPixelColor(SEGMENT.stop - i, color1);
+          setPixelColor(SEGMENT.stop - i, color1);
         }
       } else {
-        if(SEGMENT.reverse) {
-          this->setPixelColor(SEGMENT.start + i, color2);
+        if(IS_REVERSE) {
+          setPixelColor(SEGMENT.start + i, color2);
         } else {
-          this->setPixelColor(SEGMENT.stop - i, color2);
+          setPixelColor(SEGMENT.stop - i, color2);
         }
       }
     }
@@ -1385,19 +1443,19 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
    */
   uint16_t mode_running_random(void) {
     for(uint16_t i=SEGMENT_LENGTH-1; i > 0; i--) {
-      if(SEGMENT.reverse) {
-        this->setPixelColor(SEGMENT.stop - i, _strip.GetPixelColor(SEGMENT.stop - i + 1));
+      if(IS_REVERSE) {
+        setPixelColor(SEGMENT.stop - i, _strip.GetPixelColor(SEGMENT.stop - i + 1));
       } else {
-        this->setPixelColor(SEGMENT.start + i, _strip.GetPixelColor(SEGMENT.start + i - 1));
+        setPixelColor(SEGMENT.start + i, _strip.GetPixelColor(SEGMENT.start + i - 1));
       }
     }
 
     if(SEGMENT_RUNTIME.counter_mode_step == 0) {
       SEGMENT_RUNTIME.aux_param = get_random_wheel_index(SEGMENT_RUNTIME.aux_param);
-      if(SEGMENT.reverse) {
-        this->setPixelColor(SEGMENT.stop, color_wheel(SEGMENT_RUNTIME.aux_param));
+      if(IS_REVERSE) {
+        setPixelColor(SEGMENT.stop, color_wheel(SEGMENT_RUNTIME.aux_param));
       } else {
-        this->setPixelColor(SEGMENT.start, color_wheel(SEGMENT_RUNTIME.aux_param));
+        setPixelColor(SEGMENT.start, color_wheel(SEGMENT_RUNTIME.aux_param));
       }
     }
 
@@ -1412,16 +1470,16 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     fade_out();
 
     if(SEGMENT_RUNTIME.counter_mode_step < SEGMENT_LENGTH) {
-      if(SEGMENT.reverse) {
-        this->setPixelColor(SEGMENT.stop - SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
+      if(IS_REVERSE) {
+        setPixelColor(SEGMENT.stop - SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
       } else {
-        this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
+        setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
       }
     } else {
-      if(SEGMENT.reverse) {
-        this->setPixelColor(SEGMENT.stop - ((SEGMENT_LENGTH * 2) - SEGMENT_RUNTIME.counter_mode_step) + 2, SEGMENT.colors[0]);
+      if(IS_REVERSE) {
+        setPixelColor(SEGMENT.stop - ((SEGMENT_LENGTH * 2) - SEGMENT_RUNTIME.counter_mode_step) + 2, SEGMENT.colors[0]);
       } else {
-        this->setPixelColor(SEGMENT.start + ((SEGMENT_LENGTH * 2) - SEGMENT_RUNTIME.counter_mode_step) - 2, SEGMENT.colors[0]);
+        setPixelColor(SEGMENT.start + ((SEGMENT_LENGTH * 2) - SEGMENT_RUNTIME.counter_mode_step) - 2, SEGMENT.colors[0]);
       }
     }
 
@@ -1435,10 +1493,10 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t mode_comet(void) {
     fade_out();
 
-    if(SEGMENT.reverse) {
-      this->setPixelColor(SEGMENT.stop - SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
+    if(IS_REVERSE) {
+      setPixelColor(SEGMENT.stop - SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
     } else {
-      this->setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
+      setPixelColor(SEGMENT.start + SEGMENT_RUNTIME.counter_mode_step, SEGMENT.colors[0]);
     }
 
     SEGMENT_RUNTIME.counter_mode_step = (SEGMENT_RUNTIME.counter_mode_step + 1) % SEGMENT_LENGTH;
@@ -1468,18 +1526,18 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       prevLed = (prevLedhex >> 2) & 0x3F3F3F;
       thisLed = thisLedhex;
       nextLed = (nextLedhex >> 2) & 0x3F3F3F;
-      this->setPixelColor(i, (RgbColor) HtmlColor((uint32_t) (prevLed + thisLed + nextLed)));
+      setPixelColor(i, (RgbColor) HtmlColor((uint32_t) (prevLed + thisLed + nextLed)));
     }
 
     if(!_triggered) {
       for(uint16_t i=0; i<max(1, SEGMENT_LENGTH/20); i++) {
         if(random(10) == 0) {
-		  this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
+		  setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
         }
       }
     } else {
       for(uint16_t i=0; i<max(1, SEGMENT_LENGTH/10); i++) {
-		this->setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
+		setPixelColor(SEGMENT.start + random(SEGMENT_LENGTH), color);
       }
     }
     return (SEGMENT.speed / SEGMENT_LENGTH);
@@ -1508,7 +1566,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
     byte lum = max(SEGMENT.colors[0].R, max(SEGMENT.colors[0].G, SEGMENT.colors[0].B)) / rev_intensity;
     for(uint16_t i=SEGMENT.start; i <= SEGMENT.stop; i++) {
       int flicker = random(0, lum);
-      this->setPixelColor(i, max(SEGMENT.colors[0].R - flicker, 0), max(SEGMENT.colors[0].G - flicker, 0), max(SEGMENT.colors[0].B - flicker, 0));
+      setPixelColor(i, max(SEGMENT.colors[0].R - flicker, 0), max(SEGMENT.colors[0].G - flicker, 0), max(SEGMENT.colors[0].B - flicker, 0));
     }
     return (SEGMENT.speed / SEGMENT_LENGTH);
   }
@@ -1540,22 +1598,22 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t tricolor_chase(RgbColor color1, RgbColor color2, RgbColor color3) {
     for(uint16_t i=0; i < SEGMENT_LENGTH; i++) {
       if((i + SEGMENT_RUNTIME.counter_mode_step) % 6 < 2) {
-        if(SEGMENT.reverse) {
-          this->setPixelColor(SEGMENT.start + i, color1);
+        if(IS_REVERSE) {
+          setPixelColor(SEGMENT.start + i, color1);
         } else {
-          this->setPixelColor(SEGMENT.stop - i, color1);
+          setPixelColor(SEGMENT.stop - i, color1);
         }
       } else if((i + SEGMENT_RUNTIME.counter_mode_step) % 6 < 4) {
-        if(SEGMENT.reverse) {
-          this->setPixelColor(SEGMENT.start + i, color2);
+        if(IS_REVERSE) {
+          setPixelColor(SEGMENT.start + i, color2);
         } else {
-          this->setPixelColor(SEGMENT.stop - i, color2);
+          setPixelColor(SEGMENT.stop - i, color2);
         }
       } else {
-        if(SEGMENT.reverse) {
-          this->setPixelColor(SEGMENT.start + i, color3);
+        if(IS_REVERSE) {
+          setPixelColor(SEGMENT.start + i, color3);
         } else {
-          this->setPixelColor(SEGMENT.stop - i, color3);
+          setPixelColor(SEGMENT.stop - i, color3);
         }
       }
     }
@@ -1584,21 +1642,21 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   uint16_t mode_icu(void) {
     uint16_t dest = SEGMENT_RUNTIME.counter_mode_step & 0xFFFF;
  
-    this->setPixelColor(SEGMENT.start + dest, SEGMENT.colors[0]);
-    this->setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, SEGMENT.colors[0]);
+    setPixelColor(SEGMENT.start + dest, SEGMENT.colors[0]);
+    setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, SEGMENT.colors[0]);
 
     if(SEGMENT_RUNTIME.aux_param == dest) { // pause between eye movements
       if(random(6) == 0) { // blink once in a while
-        this->setPixelColor(SEGMENT.start + dest, rgbcolor_black);
-        this->setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, rgbcolor_black);
+        setPixelColor(SEGMENT.start + dest, rgbcolor_black);
+        setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, rgbcolor_black);
         return 200;
       }
       SEGMENT_RUNTIME.aux_param = random(SEGMENT_LENGTH/2);
       return 1000 + random(2000);
     }
 
-    this->setPixelColor(SEGMENT.start + dest, rgbcolor_black);
-    this->setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, rgbcolor_black);
+    setPixelColor(SEGMENT.start + dest, rgbcolor_black);
+    setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, rgbcolor_black);
 
     if(SEGMENT_RUNTIME.aux_param > SEGMENT_RUNTIME.counter_mode_step) {
       SEGMENT_RUNTIME.counter_mode_step++;
@@ -1608,8 +1666,8 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       dest--;
     }
 
-    this->setPixelColor(SEGMENT.start + dest, SEGMENT.colors[0]);
-    this->setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, SEGMENT.colors[0]);
+    setPixelColor(SEGMENT.start + dest, SEGMENT.colors[0]);
+    setPixelColor(SEGMENT.start + dest + SEGMENT_LENGTH/2, SEGMENT.colors[0]);
 
     return (SEGMENT.speed / SEGMENT_LENGTH);
   }
@@ -1648,10 +1706,10 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
       // draw meteor
       for(uint16_t i = 0; i <= meteorSize; i++) {
         if( ( (SEGMENT_RUNTIME.counter_mode_step)-i <= SEGMENT_LENGTH) && ((SEGMENT_RUNTIME.counter_mode_step)-i >= 0) ) {
-          if(!SEGMENT.reverse){
-            this->setPixelColor(SEGMENT_RUNTIME.counter_mode_step - i, SEGMENT.colors[0]);
+          if(!IS_REVERSE){
+            setPixelColor(SEGMENT_RUNTIME.counter_mode_step - i, SEGMENT.colors[0]);
 		  } else {
-		    this->setPixelColor(SEGMENT_LENGTH - SEGMENT_RUNTIME.counter_mode_step + i, SEGMENT.colors[0]);
+		    setPixelColor(SEGMENT_LENGTH - SEGMENT_RUNTIME.counter_mode_step + i, SEGMENT.colors[0]);
           }
         } 
       }
