@@ -155,8 +155,6 @@ typedef  NeoPixelBrightnessBus<NeoRbgFeature, NeoWs2813Method>                  
 
 //typedef  NeoPixelBrightnessBus <NeoRgbwFeature, Neo800KbpsMethod>               NeoPBBRGBW800; // Not supported yet
   
-NeoGamma<NeoGammaTableMethod> colorGamma;
-  
 template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   typedef uint16_t (NeoAnimationFX::*mode_ptr)(void);
   
@@ -548,7 +546,7 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   }
 
   void setSegment(uint8_t n, uint16_t start, uint16_t stop, uint8_t mode, uint32_t color, uint16_t speed, bool reverse) {
-	uint32_t colors[] = {color, 0, 0};
+	uint32_t colors[] = {color, BLACK, GREEN};
     setSegment(n, start, stop, mode, colors, speed, reverse);
   }
 
@@ -1725,11 +1723,9 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   
   //////////// End of Effects ////////////
   
-  const __FlashStringHelper*
-      _name[MODE_COUNT]; // SRAM footprint: 2 bytes per element
+  const __FlashStringHelper* _name[MODE_COUNT]; // SRAM footprint: 2 bytes per element
 
-  mode_ptr
-      _mode[MODE_COUNT]; // SRAM footprint: 4 bytes per element
+  mode_ptr _mode[MODE_COUNT]; // SRAM footprint: 4 bytes per element
 	  
   uint8_t _segment_index = 0;
   uint8_t _num_segments = 1;
@@ -1738,5 +1734,6 @@ template<typename T_PIXEL_METHOD> class NeoAnimationFX {
   RgbColor rgbcolor_black =   (RgbColor) (HtmlColor(BLACK));
   RgbColor rgbcolor_white =   (RgbColor) (HtmlColor(WHITE));
   RgbColor rgbcolor_default = (RgbColor) (HtmlColor(DEFAULT_COLOR));
+  NeoGamma<NeoGammaTableMethod> colorGamma;
 };
 #endif
