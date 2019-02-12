@@ -2,7 +2,7 @@
 This uses NeoPixelBrightnessBus and borrows code from awesome animations developed at [WS2812FX](https://github.com/kitesurfer1404/WS2812FX).
 
 ----------------------------------------
-Check [WS28FX example](https://github.com/kitesurfer1404/WS2812FX/blob/master/examples/ws2812fx_dma/ws2812fx_dma.ino), easier way to achieve this. Still want to use this, follow instructions below.  
+Check [WS2812FX example](https://github.com/kitesurfer1404/WS2812FX/blob/master/examples/ws2812fx_dma/ws2812fx_dma.ino), easier way to achieve this. Still want to use this, follow instructions below.  
 ----------------------------------------
 ## Why?
 - NeoPixelBrightnessBus uses DMA, so WiFi functions are not effected while animating.

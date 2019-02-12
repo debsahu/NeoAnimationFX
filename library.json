@@ -1,14 +1,14 @@
 {
   "name": "NeoAnimationFX",
   "keywords": "NeoPixel, WS2811, WS2812, WS2813, SK6812, DotStar, APA102, RGB, RGBW",
-  "description": "A library that makes controlling NeoPixels (WS2811, WS2812, WS2813 & SK6812) and DotStars (APA102) easy.  Supports most Arduino platforms.  Support for RGBW pixels.  Includes seperate RgbColor, RgbwColor, HslColor, and HsbColor objects.  Includes an animator class that helps create asyncronous animations.  For Esp8266 it has three methods of sending NeoPixel data, DMA, UART, and Bit Bang; and two methods of sending DotStar data, hardware SPI and software SPI.",
+  "description": "A animation library that makes controlling NeoPixels (WS2811, WS2812, WS2813 & SK6812) and DotStars (APA102) easy.  Supports most Arduino platforms.  Support for RGBW pixels.  Includes seperate RgbColor, RgbwColor, HslColor, and HsbColor objects.  Includes an animator class that helps create asyncronous animations.  For Esp8266 it has three methods of sending NeoPixel data, DMA, UART, and Bit Bang; and two methods of sending DotStar data, hardware SPI and software SPI.",
   "homepage": "https://github.com/debsahu/NeoAnimationFX",
   "repository":
   {
     "type": "git",
     "url": "https://github.com/debsahu/NeoAnimationFX"
   },
-  "version": "0.2",
+  "version": "0.3",
   "frameworks": "arduino",
   "platforms": "esp8266"
 }

@@ -1,9 +1,17 @@
 #include <NeoAnimationFX.h>
 
-#define NEOMETHOD NeoPBBGRB800
 #define numPixels 16
+#define PIN 2 //GPIO3
 
-NEOMETHOD strip(numPixels);
+#ifdef ESP8266
+typedef  NeoPixelBrightnessBus<NeoGrbFeature, Neo800KbpsMethod> NEOMETHOD; //uses GPIO3/RX
+//typedef  NeoPixelBrightnessBus<NeoGrbFeature, NeoEsp8266Uart1800KbpsMethod> NEOMETHOD; //uses GPIO2/D4
+#endif
+#ifdef ESP32
+typedef  NeoPixelBrightnessBus<NeoGrbFeature, NeoEsp32I2s1800KbpsMethod> NEOMETHOD;
+#endif
+
+NEOMETHOD strip(numPixels, PIN); // PIN is ignored for ESP8266
 NeoAnimationFX<NEOMETHOD> myPixelRef(strip);
 
 int i=-1;
